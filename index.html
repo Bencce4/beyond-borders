@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Beyond Borders</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
+  <link href="css/styles.css" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <aside class="panel">
+      <h1>Beyond Borders</h1>
+
+      <div class="controls">
+        <label><input type="checkbox" value="gdp_pc" checked> GDP per capita</label>
+        <label><input type="checkbox" value="aid_per_refugee" checked> Aid per refugee</label>
+        <label><input type="checkbox" value="unemployment" checked> Unemployment</label>
+
+        <div class="control-row">
+          <label><input type="radio" name="boxmode" value="stack" checked> Stack</label>
+          <label><input type="radio" name="boxmode" value="side"> Side-by-side</label>
+        </div>
+
+        <div class="control-row">
+          <span>Arrow color by:</span>
+          <select id="arrowColorVar">
+            <option value="pct_children">Children %</option>
+            <option value="pct_women">Women %</option>
+            <option value="pct_elderly">Elderly %</option>
+          </select>
+        </div>
+
+        <button id="resetBtn" type="button">Reset</button>
+      </div>
+
+      <div id="legend-arrows"></div>
+      <div id="legend-boxes"></div>
+
+      <div class="info">
+        <h3>Country</h3>
+        <div id="info-body">Click a country to pin its stats.</div>
+      </div>
+    </aside>
+
+    <main id="map"></main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/main.js?v=48"></script>
+</body>
+</html>

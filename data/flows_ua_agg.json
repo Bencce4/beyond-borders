@@ -1,0 +1,5 @@
+[
+  {"dest_iso3":"PL","total_refugees":1500000,"pct_children":0.35,"pct_women":0.60,"pct_elderly":0.05,"lat":52.1,"lon":19.4},
+  {"dest_iso3":"DE","total_refugees":1200000,"pct_children":0.31,"pct_women":0.62,"pct_elderly":0.07,"lat":51.0,"lon":10.0},
+  {"dest_iso3":"RO","total_refugees":200000,"pct_children":0.30,"pct_women":0.63,"pct_elderly":0.07,"lat":45.9,"lon":24.9}
+]
