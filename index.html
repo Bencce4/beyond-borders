@@ -13,10 +13,9 @@
       <h1>Beyond Borders</h1>
 
       <div class="controls">
-        <label><input type="checkbox" value="gdp_pc" checked> GDP per capita</label>
-        <label><input type="checkbox" value="aid_per_refugee" checked> Aid per refugee</label>
-        <label><input type="checkbox" value="unemployment" checked> Unemployment</label>
-
+        <label><input type="checkbox" class="factor-toggle" data-factor value="gdp_pc" checked> GDP per capita</label>
+        <label><input type="checkbox" class="factor-toggle" data-factor value="unemployment" checked> Unemployment</label>
+        <label><input type="checkbox" class="factor-toggle" data-factor value="alloc_pct_gdp"> Total allocations incl EU (% GDP)</label>
         <div class="control-row">
           <label><input type="radio" name="boxmode" value="stack" checked> Stack</label>
           <label><input type="radio" name="boxmode" value="side"> Side-by-side</label>
@@ -26,9 +25,28 @@
           <span>Arrow color by:</span>
           <select id="arrowColorVar">
             <option value="pct_children">Children %</option>
-            <option value="pct_women">Women %</option>
-            <option value="pct_elderly">Elderly %</option>
+            <option value="pct_women_adult">Adult women %</option>
+            <option value="pct_men_adult">Adult men %</option>
+            <option value="pct_elderly">Elderly % (65+)</option>
           </select>
+        </div>
+
+        <div class="control-row">
+          <span>Countries shown:</span>
+          <details class="country-picker" id="countryPicker">
+            <summary id="countryPickerSummary">All countries</summary>
+            <div class="country-picker-body">
+              <div class="country-picker-search">
+                <input type="search" id="countryPickerSearch" placeholder="Filter countries…" autocomplete="off" />
+                <span id="countryPickerMatch" aria-live="polite"></span>
+              </div>
+              <div class="country-picker-actions">
+                <button type="button" id="countrySelectAll">Select all</button>
+                <button type="button" id="countrySelectNone">Clear</button>
+              </div>
+              <div class="country-picker-list" id="countryPickerList"></div>
+            </div>
+          </details>
         </div>
 
         <button id="resetBtn" type="button">Reset</button>
