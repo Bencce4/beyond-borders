@@ -9,54 +9,20 @@
 </head>
 <body>
   <div id="app">
-    <aside class="panel">
-      <h1>Beyond Borders</h1>
-
-      <div class="controls">
-        <label><input type="checkbox" class="factor-toggle" data-factor value="gdp_pc" checked> GDP per capita</label>
-        <label><input type="checkbox" class="factor-toggle" data-factor value="unemployment" checked> Unemployment</label>
-        <label><input type="checkbox" class="factor-toggle" data-factor value="alloc_pct_gdp"> Total allocations incl EU (% GDP)</label>
-        <div class="control-row boxmode-row">
-          <label><input type="radio" name="boxmode" value="stack" checked> Stack</label>
-          <label><input type="radio" name="boxmode" value="side"> Side-by-side</label>
-        </div>
-
-        <div class="control-row">
-          <span>Arrow color by:</span>
-          <select id="arrowColorVar">
-            <option value="pct_children">Children %</option>
-            <option value="pct_women_adult">Adult women %</option>
-            <option value="pct_men_adult">Adult men %</option>
-            <option value="pct_elderly">Elderly % (65+)</option>
-          </select>
-        </div>
-
-        <div class="control-row">
-          <span>Countries shown:</span>
-          <details class="country-picker" id="countryPicker">
-            <summary id="countryPickerSummary">All countries</summary>
-            <div class="country-picker-body">
-              <div class="country-picker-search">
-                <input type="search" id="countryPickerSearch" placeholder="Filter countries…" autocomplete="off" />
-                <span id="countryPickerMatch" aria-live="polite"></span>
-              </div>
-              <div class="country-picker-actions">
-                <button type="button" id="countrySelectAll">Select all</button>
-                <button type="button" id="countrySelectNone">Clear</button>
-              </div>
-              <div class="country-picker-list" id="countryPickerList"></div>
-            </div>
-          </details>
-        </div>
-
-        <button id="resetBtn" type="button">Reset</button>
-      </div>
-
-      <div id="legend-arrows"></div>
-      <div id="legend-boxes"></div>
-    </aside>
-
     <main id="map"></main>
+    <div id="legend-total"></div>
+    <div id="country-actions" class="country-actions">
+      <span class="country-actions-label">Countries:</span>
+      <button type="button" id="countrySelectAll">Select all</button>
+      <button type="button" id="countrySelectNone">Clear</button>
+    </div>
+    <div id="zoom-controls"></div>
+    <img src="beyond borders logo.png" alt="Beyond Borders" class="corner-logo">
+
+    <div class="detail-toggle-wrap">
+      <button class="toggle-arrow" id="detailToggleArrow" aria-label="Open compare panel">←</button>
+      <button class="detail-toggle" id="detailToggle" type="button" aria-controls="detailPanel">Compare</button>
+    </div>
 
     <aside class="detail-panel" id="detailPanel" aria-live="polite">
       <button class="detail-close" id="detailClose" type="button" aria-label="Close">×</button>
