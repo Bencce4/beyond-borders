@@ -127,7 +127,7 @@ function updateCompareToggle() {
       L.geoJSON(feat, {
         pane: 'selection',
         style: {
-          color: '#000',
+          color: '#ffffff',
           weight: 2,
           opacity: 1,
           fill: false,
@@ -315,7 +315,7 @@ const getCountryStyle = id => {
   }
   const fill = hasData && totalScale ? totalScale(totalVal) : '#9ca3af';
   return {
-    color: isSel ? '#000' : '#0f172a',
+    color: '#ffffff',
     weight: isSel ? 2 : 1.0,
     opacity: 1,
     fill: true,
@@ -1003,8 +1003,8 @@ const fmtPct = v => {
       );
       const tVals = Object.values(totals).filter(v => Number.isFinite(v) && v > 0);
       const tHi = 3_000_000;
-      totalScale = d3.scaleSequentialSqrt(d3.interpolateYlGnBu)
-        .domain([0, tHi])
+      totalScale = d3.scaleSequentialLog(d3.interpolatePRGn)
+        .domain([1, tHi])
         .clamp(true);
     }
     buildMiniScales();
@@ -1765,13 +1765,20 @@ const fmtPct = v => {
       root.selectAll('*').remove();
       if (!totalScale) return;
 
-      const W = 800, H = 60, P = { l: 24, r: 24, t: 12, b: 12 };
+      const containerW = root.node()?.clientWidth || 680;
+      const W = Math.max(240, containerW);
+      const H = 60;
+      const P = { l: 16, r: 16, t: 12, b: 12 };
       const gradId = 'totalGrad';
+
+      const [loRaw, hiRaw] = totalScale.domain();
+      const lo = Math.max(1, loRaw || 1);
+      const hi = Math.max(lo * 1.01, hiRaw || lo * 10);
 
       const svg = root
         .append('svg')
         .attr('class', 'legend')
-        .attr('width', W)
+        .attr('width', '100%')
         .attr('height', H);
 
       svg
@@ -1788,18 +1795,17 @@ const fmtPct = v => {
         .attr('x1', '0%')
         .attr('x2', '100%');
 
-      const dom = totalScale.domain();
-      const [lo, hi] = dom;
+      const logSpan = Math.log(hi / lo);
       for (let i = 0; i <= 20; i++) {
         const t = i / 20;
-        const v = lo + (hi - lo) * t;
+        const v = lo * Math.exp(logSpan * t);
         grad
           .append('stop')
           .attr('offset', `${t * 100}%`)
           .attr('stop-color', totalScale(v));
       }
 
-      const gradW = W - P.l - P.r;
+      const gradW = Math.max(120, W - P.l - P.r);
       const g = svg
         .append('g')
         .attr('transform', `translate(${P.l},${P.t + 8})`);
@@ -1809,8 +1815,8 @@ const fmtPct = v => {
         .attr('height', 10)
         .attr('fill', `url(#${gradId})`);
 
-      const axis = d3.scaleLinear().domain([lo, hi]).range([0, gradW]);
-      const ticks = [lo, (lo + hi) / 2, hi].map(v => Math.max(0, Math.round(v)));
+      const axis = d3.scaleLog().domain([lo, hi]).range([0, gradW]);
+      const ticks = axis.ticks(4).filter(v => v >= lo && v <= hi);
       g
         .selectAll('g.tick')
         .data(ticks)
