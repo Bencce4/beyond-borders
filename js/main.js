@@ -1029,10 +1029,20 @@ const fmtPct = v => {
           ? [1, hi + 1]
           : [Math.max(1, lo), Math.max(1, hi)]
       );
-      const tVals = Object.values(totals).filter(v => Number.isFinite(v) && v > 0);
-      const tHi = 3_000_000;
-      totalScale = d3.scaleSequentialLog(d3.interpolatePRGn)
-        .domain([1, tHi])
+      const tHi = 1_200_000;
+      const colors = [
+        '#fff7ed',
+        '#f9c385ff',
+        '#fb923c',
+        '#f97316',
+        '#ff4d00ff'
+      ];
+      const domainPoints = [10_000, 50_000, 100_000, 500_000, tHi];
+
+      totalScale = d3.scaleLog()
+        .domain(domainPoints)
+        .range(colors)
+        .interpolate(d3.interpolateRgb)
         .clamp(true);
     }
     buildMiniScales();
@@ -1803,9 +1813,9 @@ const fmtPct = v => {
       const P = { l: 16, r: 16, t: 12, b: 12 };
       const gradId = 'totalGrad';
 
-      const [loRaw, hiRaw] = totalScale.domain();
-      const lo = Math.max(2000, loRaw || 2000);
-      const hi = Math.max(lo * 1.01, hiRaw || lo * 10);
+      const domainPts = totalScale.domain();
+      const lo = Math.max(1, domainPts[0] || 1);
+      const hi = Math.max(lo * 1.01, domainPts[domainPts.length - 1] || lo * 10);
 
       const svg = root
         .append('svg')
@@ -1828,8 +1838,8 @@ const fmtPct = v => {
         .attr('x2', '100%');
 
       const logSpan = Math.log(hi / lo);
-      for (let i = 0; i <= 20; i++) {
-        const t = i / 20;
+      for (let i = 0; i <= 40; i++) {
+        const t = i / 40;
         const v = lo * Math.exp(logSpan * t);
         grad
           .append('stop')
@@ -1848,7 +1858,7 @@ const fmtPct = v => {
         .attr('fill', `url(#${gradId})`);
 
       const axis = d3.scaleLog().domain([lo, hi]).range([0, gradW]);
-      const ticks = [2_000, 50_000, 1_000_000].filter(v => v >= lo && v <= hi);
+      const ticks = [10_000, 50_000, 100_000, 500_000, 1_200_000].filter(v => v >= lo && v <= hi);
       const fmtLegend = v => {
         if (v >= 1_000_000) return `${Math.round(v / 1_000_000)}M`;
         if (v >= 1_000) return `${Math.round(v / 1_000)}k`;
