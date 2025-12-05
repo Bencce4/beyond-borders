@@ -20,25 +20,25 @@ main#map{position:relative;overflow:hidden}
 }
 #legend-total{
   position:fixed;
-  left:40%;
-  bottom:clamp(14px, 2.5vw, 26px);
-  transform:translateX(-40%);
+  left:50%;
+  top:clamp(18px, 6vw, 50px);
+  transform:translateX(-50%);
   z-index:1200;
   pointer-events:none;
   width:clamp(200px, 60vw, 440px);
-  background:rgba(15,23,42,0.95);
-  border:2px solid rgba(255,255,255,0.35);
+  background:rgba(255,255,255,0.08);
+  border:2px solid rgba(255,255,255,0.22);
   border-radius:clamp(10px, 1vw + 6px, 14px);
   padding:clamp(8px, 1vw + 5px, 14px);
-  box-shadow:0 10px 22px rgba(0,0,0,0.45), 0 0 0 2px rgba(255,255,255,0.22);
+  box-shadow:0 10px 22px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.12);
 }
 .country-actions{
   position:fixed;
   left:clamp(10px, 2vw, 24px);
   bottom:clamp(14px, 2.5vw, 26px);
   display:flex;
-  flex-direction:column;
-  gap:clamp(4px, 0.8vw + 3px, 10px);
+  flex-direction:row;
+  gap:clamp(8px, 1vw + 4px, 14px);
   z-index:1200;
   background:rgba(15,23,42,0.95);
   border:2px solid rgba(255,255,255,0.35);
@@ -60,13 +60,6 @@ main#map{position:relative;overflow:hidden}
   background:linear-gradient(135deg, rgba(255,255,255,0.38), rgba(255,255,255,0.18));
   transform:translateY(-2px) scale(1.02);
   box-shadow:0 6px 14px rgba(0,0,0,0.35);
-}
-.country-actions-label{
-  color:#e5e7eb;
-  font-weight:700;
-  font-size:clamp(12px, 1vw + 10px, 15px);
-  text-transform:uppercase;
-  letter-spacing:0.05em;
 }
 .country-actions-buttons{
   display:flex;
@@ -95,10 +88,11 @@ main#map{position:relative;overflow:hidden}
   position:fixed;
   top:0;right:0;bottom:0;
   width:clamp(260px, 42vw, 480px);
-  background:var(--panel);
-  border-left:1px solid var(--border);
+  background:transparent;
+  border-left:none;
   padding:clamp(12px, 1.4vw, 18px);
-  box-shadow:-12px 0 24px rgba(0,0,0,0.35);
+  box-shadow:none;
+  backdrop-filter:none;
   display:none;
   z-index:1000;
   overflow:auto;
@@ -125,12 +119,31 @@ main#map{position:relative;overflow:hidden}
 .detail-header h3{margin:0;font-size:clamp(14px, 1vw + 12px, 18px)}
 .detail-actions{display:flex;gap:6px}
 .detail-actions button{
-  border:1px solid var(--border);
-  background:var(--panel);
+  border:2px solid rgba(255,255,255,0.35);
+  background:rgba(15,23,42,0.95);
   color:var(--ink);
-  padding:4px 8px;
-  border-radius:6px;
+  padding:clamp(8px, 1vw + 4px, 12px) clamp(10px, 1vw + 6px, 16px);
+  border-radius:clamp(8px, 1vw + 6px, 14px);
+  box-shadow:0 10px 22px rgba(0,0,0,0.45), 0 0 0 2px rgba(255,255,255,0.22);
   cursor:pointer;
+}
+.detail-body{
+  display:grid;
+  gap:12px;
+}
+.detail-header{
+  background:rgba(15,23,42,0.95);
+  border:2px solid rgba(255,255,255,0.35);
+  border-radius:clamp(8px, 1vw + 6px, 14px);
+  padding:clamp(10px, 1vw + 6px, 16px);
+  box-shadow:0 10px 22px rgba(0,0,0,0.45), 0 0 0 2px rgba(255,255,255,0.22);
+}
+.compare-table-wrapper{
+  background:rgba(15,23,42,0.95);
+  border:2px solid rgba(255,255,255,0.35);
+  border-radius:clamp(8px, 1vw + 6px, 14px);
+  padding:clamp(10px, 1vw + 6px, 16px);
+  box-shadow:0 10px 22px rgba(0,0,0,0.45), 0 0 0 2px rgba(255,255,255,0.22);
 }
 .compare-list{display:grid;gap:8px}
 .compare-card{
@@ -172,10 +185,11 @@ main#map{position:relative;overflow:hidden}
 }
 .compare-charts{display:grid;gap:10px;margin-top:10px}
 .chart-card{
-  border:1px solid var(--border);
-  border-radius:10px;
-  padding:10px 12px;
-  background:rgba(255,255,255,0.02);
+  background:rgba(15,23,42,0.95);
+  border:2px solid rgba(255,255,255,0.35);
+  border-radius:clamp(8px, 1vw + 6px, 14px);
+  padding:clamp(10px, 1vw + 6px, 16px);
+  box-shadow:0 10px 22px rgba(0,0,0,0.45), 0 0 0 2px rgba(255,255,255,0.22);
 }
 .chart-title{
   font-weight:600;

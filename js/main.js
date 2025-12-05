@@ -68,6 +68,7 @@ let initialSelectionDone = false;
 let renderCompare = () => {};
 let flowEngine = null;
 let compareSort = { key: 'total_refugees', dir: 'desc' };
+let refitForViewport = () => {};
 
 function showDetail(html) {
   const panel = document.getElementById('detailPanel');
@@ -85,6 +86,7 @@ function showDetail(html) {
   if (toggleBtn) toggleBtn.style.display = 'none';
   if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'true');
   document.body.classList.add('panel-open');
+  refitForViewport?.();
 }
 
 function hideDetail() {
@@ -104,6 +106,7 @@ function hideDetail() {
     }
     document.body.classList.remove('panel-open');
     updateCompareToggle();
+    refitForViewport?.();
   }
 }
 
@@ -151,11 +154,35 @@ function updateCompareToggle() {
   // Map (no basemap)
   // Allow extra room east so the map can be panned under the open compare panel
   const EUROPE_BOUNDS = L.latLngBounds([34, -10], [71.5, 60]);
+  const computePadding = () => {
+    const panelOpen = document.body.classList.contains('panel-open');
+    const panelEl = document.getElementById('detailPanel');
+    const panelW = panelOpen && panelEl ? panelEl.offsetWidth || 0 : 0;
+    const rightPad = Math.max(60, panelW + (panelOpen ? 40 : 20));
+    const bottomPad = Math.max(90, (document.getElementById('country-actions')?.offsetHeight || 0) + 50);
+    return {
+      topLeft: [30, 20],
+      bottomRight: [rightPad, bottomPad]
+    };
+  };
+  const MIN_COMFORT_ZOOM = 3;
+  refitForViewport = (animate = false) => {
+    const pads = computePadding();
+    map.fitBounds(EUROPE_BOUNDS, {
+      paddingTopLeft: L.point(pads.topLeft[0], pads.topLeft[1]),
+      paddingBottomRight: L.point(pads.bottomRight[0], pads.bottomRight[1]),
+      animate
+    });
+    const desired = Math.min(MIN_COMFORT_ZOOM, map.getMaxZoom());
+    if (map.getZoom() < desired) {
+      map.setView(map.getCenter(), desired, { animate });
+    }
+  };
   const map = L.map('map', {
     zoomControl: true,
     attributionControl: false,
-    minZoom: 4,
-    maxZoom: 8,
+    minZoom: 4.25,
+    maxZoom: 7.5,
     zoomSnap: 0.25,
     zoomDelta: 0.25,
     wheelPxPerZoomLevel: 45,
@@ -169,7 +196,8 @@ function updateCompareToggle() {
   });
   window.bb.map = map;
   map.fitBounds(EUROPE_BOUNDS, { animate: false });
-  map.setView([52, 20], 5, { animate: false });
+  map.setView([52, 20], MIN_COMFORT_ZOOM, { animate: false });
+  refitForViewport(false);
 
   // Panes (z-order)
   map.createPane('countries'); map.getPane('countries').style.zIndex = 420;
@@ -1776,7 +1804,7 @@ const fmtPct = v => {
       const gradId = 'totalGrad';
 
       const [loRaw, hiRaw] = totalScale.domain();
-      const lo = Math.max(1, loRaw || 1);
+      const lo = Math.max(2000, loRaw || 2000);
       const hi = Math.max(lo * 1.01, hiRaw || lo * 10);
 
       const svg = root
@@ -1820,7 +1848,7 @@ const fmtPct = v => {
         .attr('fill', `url(#${gradId})`);
 
       const axis = d3.scaleLog().domain([lo, hi]).range([0, gradW]);
-      const ticks = axis.ticks(4).filter(v => v >= lo && v <= hi);
+      const ticks = [2_000, 50_000, 1_000_000].filter(v => v >= lo && v <= hi);
       const fmtLegend = v => {
         if (v >= 1_000_000) return `${Math.round(v / 1_000_000)}M`;
         if (v >= 1_000) return `${Math.round(v / 1_000)}k`;
@@ -1857,13 +1885,18 @@ const fmtPct = v => {
     safe(renderTotalLegend, '[legend:total]');
 
     // Reposition minis on pan/zoom
-    map.on('moveend zoomend', () => {
-      safe(drawMinis, '[event:minis]');
-      safe(redrawSelectionOutline, '[event:outline]');
-    });
-    map.on('zoomend', () => {
-      if (flowEngine) flowEngine.dirty = true;
-    });
+  map.on('moveend zoomend', () => {
+    safe(drawMinis, '[event:minis]');
+    safe(redrawSelectionOutline, '[event:outline]');
+  });
+  map.on('zoomend', () => {
+    if (flowEngine) flowEngine.dirty = true;
+  });
+  window.addEventListener('resize', () => {
+    map.invalidateSize();
+    refitForViewport(false);
+    if (flowEngine) flowEngine.dirty = true;
+  });
 
     // UI
     document.querySelectorAll('.controls .factor-toggle, .controls select').forEach(el => {
