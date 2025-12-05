@@ -295,7 +295,7 @@ const getCountryStyle = id => {
   const hasData = totalVal > 0 || id === 'UKR';
   if (id === 'NOR' || id === 'CHE' || id === 'ISL') {
     return {
-      color: '#0f172a',
+      color: isSel ? '#ffffff' : '#000000',
       weight: isSel ? 2 : 1.0,
       opacity: 1,
       fill: true,
@@ -305,8 +305,8 @@ const getCountryStyle = id => {
   }
   if (id === 'UKR') {
     return {
-      color: '#000',
-      weight: isSel ? 2 : 1.2,
+      color: isSel ? '#ffffff' : '#000000',
+      weight: isSel ? 2 : 1.0,
       opacity: 1,
       fill: true,
       fillOpacity: 0.7,
@@ -315,7 +315,7 @@ const getCountryStyle = id => {
   }
   const fill = hasData && totalScale ? totalScale(totalVal) : '#9ca3af';
   return {
-    color: '#ffffff',
+    color: isSel ? '#ffffff' : '#000000',
     weight: isSel ? 2 : 1.0,
     opacity: 1,
     fill: true,
@@ -1221,21 +1221,21 @@ const fmtPct = v => {
         },
         {
           id: 'gdp_pc',
-          label: 'GDP pc',
+          label: 'GDP per capita',
           align: 'right',
           render: row => fmtNum(row.f.gdp_pc),
           color: metricColorFor('gdp_pc')
         },
         {
           id: 'unemployment',
-          label: 'Unemployment',
+          label: 'Unemployment rate',
           align: 'right',
           render: row => fmtPct(row.f.unemployment),
           color: metricColorFor('unemployment')
         },
         {
           id: 'alloc_pct_gdp',
-          label: 'Allocations % GDP',
+          label: 'Support for Ukraine % GDP',
           align: 'right',
           render: row => fmtPct(row.f.alloc_pct_gdp),
           color: metricColorFor('alloc_pct_gdp')
@@ -1273,7 +1273,9 @@ const fmtPct = v => {
           if (col.id === 'country') {
             return `
               <td class="country-cell">
-                ${col.render(row)}
+                <div class="compare-country">
+                  <div class="name">${row.name}</div>
+                </div>
                 <button class="compare-remove" data-id="${row.id}" aria-label="Remove ${row.name}">×</button>
               </td>
             `;
@@ -1289,6 +1291,7 @@ const fmtPct = v => {
       }).join('');
 
       body.innerHTML = `
+        <div class="compare-charts"></div>
         <div class="compare-table-wrapper">
           <div class="compare-hint">Click any metric header to sort</div>
           <table class="compare-table">
@@ -1296,7 +1299,6 @@ const fmtPct = v => {
             <tbody>${bodyRows}</tbody>
           </table>
         </div>
-        <div class="compare-charts"></div>
       `;
       const shouldOpen = openPanel || panel.classList.contains('open');
       if (shouldOpen) {
@@ -1315,6 +1317,7 @@ const fmtPct = v => {
         root.selectAll('*').remove();
 
         const metricCols = columns.filter(c => c.id !== 'country');
+        metricCols.sort((a, b) => (a.id === 'total_refugees' ? -1 : b.id === 'total_refugees' ? 1 : 0));
         const formatVal = (col, row) => {
           switch (col.id) {
             case 'gdp_pc': return fmtNum(row.f.gdp_pc);
@@ -1340,11 +1343,12 @@ const fmtPct = v => {
             .attr('class', 'chart-title')
             .text(col.label);
 
-          const barH = 18;
-          const gap = 10;
-          const margin = { t: 12, r: 16, b: 12, l: 130 };
+          const barH = 14;
+          const gap = 8;
+          const margin = { t: 12, r: 16, b: 12, l: 70 }; // shift bars further left
           const containerW = Math.max(320, (card.node()?.clientWidth || 400));
-          const width = containerW;
+          const usable = containerW * 0.9;
+          const width = usable;
           const height = values.length * (barH + gap) + margin.t + margin.b - gap;
 
           const maxVal = d3.max(values, d => +d.val) || 1;
@@ -1383,7 +1387,7 @@ const fmtPct = v => {
             .attr('x', -10)
             .attr('y', (_, i) => i * (barH + gap) + barH * 0.7)
             .attr('text-anchor', 'end')
-            .text(d => `${d.name} (${d.id})`);
+            .text(d => `${d.name}`);
 
           g.selectAll('text.val')
             .data(values)
@@ -1817,6 +1821,11 @@ const fmtPct = v => {
 
       const axis = d3.scaleLog().domain([lo, hi]).range([0, gradW]);
       const ticks = axis.ticks(4).filter(v => v >= lo && v <= hi);
+      const fmtLegend = v => {
+        if (v >= 1_000_000) return `${Math.round(v / 1_000_000)}M`;
+        if (v >= 1_000) return `${Math.round(v / 1_000)}k`;
+        return formatCount(v);
+      };
       g
         .selectAll('g.tick')
         .data(ticks)
@@ -1835,7 +1844,7 @@ const fmtPct = v => {
             .attr('y', 18)
             .attr('text-anchor', 'middle')
             .attr('class', 'legend-tick')
-            .text(formatCount(d));
+            .text(fmtLegend(d));
         });
     }
 

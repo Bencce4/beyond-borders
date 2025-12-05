@@ -362,7 +362,7 @@ h1{margin:0 0 14px;font-size:30px}
 .detail-toggle-wrap{
   position:fixed;
   top:50%;
-  right:clamp(12px, 3vw, 28px);
+  right:clamp(6px, 2vw, 12px);
   z-index:1500;
   display:flex;
   align-items:center;
@@ -403,7 +403,7 @@ h1{margin:0 0 14px;font-size:30px}
   transform:translateY(-1px);
 }
 .panel-open .detail-toggle-wrap{
-  right:clamp(360px, 52vw, 580px);
+  right:clamp(260px, 42vw, 480px); /* align with panel edge */
 }
 .panel-open #detailToggle{
   display:none;
@@ -429,6 +429,7 @@ h1{margin:0 0 14px;font-size:30px}
   display:none !important;
   pointer-events:none !important;
 }
+
 
 @media (max-width: 1200px){
   #legend-total{
