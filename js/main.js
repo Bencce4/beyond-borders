@@ -159,7 +159,10 @@ function updateCompareToggle() {
     const panelEl = document.getElementById('detailPanel');
     const panelW = panelOpen && panelEl ? panelEl.offsetWidth || 0 : 0;
     const rightPad = Math.max(60, panelW + (panelOpen ? 40 : 20));
-    const bottomPad = Math.max(90, (document.getElementById('country-actions')?.offsetHeight || 0) + 50);
+    const actionsH = document.getElementById('country-actions')?.offsetHeight || 0;
+    const legendEl = document.getElementById('demoLegend');
+    const legendH = legendEl?.classList?.contains('show') ? legendEl.offsetHeight : 0;
+    const bottomPad = Math.max(90, actionsH + legendH + 60);
     return {
       topLeft: [30, 20],
       bottomRight: [rightPad, bottomPad]
@@ -234,6 +237,46 @@ const miniTooltip = (() => {
   document.body.appendChild(el);
   return el;
 })();
+  const metricTooltip = (() => {
+    const el = document.createElement('div');
+    el.className = 'info-tooltip';
+    el.style.position = 'fixed';
+    el.style.pointerEvents = 'none';
+  el.style.zIndex = '9999';
+  el.style.display = 'none';
+  document.body.appendChild(el);
+  let activeBtn = null;
+  const show = (html, rect) => {
+    el.innerHTML = html;
+    el.style.display = 'block';
+    el.style.pointerEvents = 'auto';
+    const padding = 10;
+    const x = Math.min(window.innerWidth - 220, Math.max(padding, rect.left));
+    const y = Math.max(padding, rect.bottom + 6);
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+  };
+  const hide = (force = false) => {
+    if (!force && activeBtn) return;
+    el.style.display = 'none';
+    el.style.pointerEvents = 'none';
+  };
+  const setActive = (btn, html, rect) => {
+    activeBtn?.classList?.remove('active');
+    activeBtn = btn;
+    activeBtn?.classList?.add('active');
+    show(html, rect);
+  };
+  const clearActive = () => {
+    activeBtn?.classList?.remove('active');
+    activeBtn = null;
+    hide(true);
+  };
+  const isActive = btn => activeBtn === btn;
+  const hasActive = () => !!activeBtn;
+  return { el, show, hide, setActive, clearActive, isActive, hasActive };
+})();
+let infoOutsideHooked = false;
 
   // Helpers / aliases
   const FLOW_KEYS = {
@@ -263,6 +306,66 @@ const miniTooltip = (() => {
       if (v !== '' && v != null) return String(v);
     }
     return '';
+  };
+
+  const cleanKeys = obj => {
+    const out = {};
+    Object.entries(obj || {}).forEach(([k, v]) => { out[String(k).trim()] = v; });
+    return out;
+  };
+
+  function blankFactor() {
+    return {
+      gdp_pc: NaN,
+      unemployment: NaN,
+      ua_perm_delta: NaN,
+      ua_perm_per_refugee: NaN,
+      alloc_pct_gdp: NaN,
+      mipex: NaN,
+      opinion: NaN,
+      women: NaN,
+      children: NaN,
+      men: NaN,
+      elderly: NaN
+    };
+  }
+
+  function ensureFactor(id) {
+    if (!factors[id]) factors[id] = blankFactor();
+    return factors[id];
+  }
+
+  const METRIC_INFO = {
+    gdp_pc: {
+      title: 'GDP per capita',
+      desc: 'Latest GDP per capita (USD) for each country.',
+      source: { label: 'eurostat/GDP_PC', href: 'https://ec.europa.eu/eurostat/databrowser/view/sdg_08_10/default/table?lang=en' }
+    },
+    unemployment: {
+      title: 'Unemployment rate',
+      desc: 'Most recent unemployment rate (share of labor force).',
+      source: { label: 'eurostat/unemployment', href: 'https://ec.europa.eu/eurostat/databrowser/view/tps00203/default/table' }
+    },
+    alloc_pct_gdp: {
+      title: 'Support for Ukraine (% GDP)',
+      desc: 'Share of GDP spent on Ukraine support (2021).',
+      source: { label: 'allocations per gdp', href: 'https://www.kielinstitut.de/publications/ukraine-support-tracker-data-6453/' }
+    },
+    mipex: {
+      title: 'MIPEX score (0–100)',
+      desc: 'Migrant Integration Policy Index score; higher means more inclusive policies.',
+      source: { label: 'mipex.eu', href: 'https://www.mipex.eu/play/' }
+    },
+    opinion: {
+      title: 'Public support for refugees',
+      desc: 'Survey share of people who support welcoming refugees.',
+      source: { label: 'eurostat/public opinion', href: 'https://europa.eu/eurobarometer/surveys/detail/3372' }
+    },
+    total_refugees: {
+      title: 'Total refugees',
+      desc: 'Aggregated count of refugees hosted by destination country.',
+      source: { label: 'eurostat.total_refugees', href: 'https://ec.europa.eu/eurostat/databrowser/view/migr_asytpsm__custom_19168926/default/table' }
+    }
   };
 
   const iso = p =>
@@ -320,8 +423,20 @@ const isCountryVisible = id =>
 const getCountryStyle = id => {
   const isSel = selectedCountries.has(id);
   const totalVal = Number.isFinite(totals[id]) ? totals[id] : 0;
+  const isAllowed = ALLOWED_ISO3.has(id) || id === 'UKR';
   const hasData = totalVal > 0 || id === 'UKR';
+  const GRAY_NON_EU = new Set(['GBR', 'SRB', 'BIH', 'ALB', 'MKD', 'MNE', 'XKX']);
   if (id === 'NOR' || id === 'CHE' || id === 'ISL') {
+    return {
+      color: isSel ? '#ffffff' : '#000000',
+      weight: isSel ? 2 : 1.0,
+      opacity: 1,
+      fill: true,
+      fillOpacity: 0.55,
+      fillColor: '#9ca3af'
+    };
+  }
+  if (GRAY_NON_EU.has(id)) {
     return {
       color: isSel ? '#ffffff' : '#000000',
       weight: isSel ? 2 : 1.0,
@@ -341,6 +456,16 @@ const getCountryStyle = id => {
       fillColor: 'url(#ukraine-flag)'
     };
   }
+  if (!isAllowed) {
+    return {
+      color: isSel ? '#ffffff' : '#0f172a',
+      weight: isSel ? 2 : 1.0,
+      opacity: 1,
+      fill: true,
+      fillOpacity: 0.6,
+      fillColor: '#374151'
+    };
+  }
   const fill = hasData && totalScale ? totalScale(totalVal) : '#9ca3af';
   return {
     color: isSel ? '#ffffff' : '#000000',
@@ -357,11 +482,98 @@ const getCountryStyle = id => {
   const arrowColor = d3.scaleSequential(d3.interpolatePlasma).domain([0, 1]).clamp(true);
   const PEOPLE_PER_PARTICLE = 10000; // target people represented by one dot (denser for visibility)
   const DEMO_CATS = [
-    { key: 'men',      color: '#3b82f6' }, // bright blue
     { key: 'women',    color: '#ec4899' }, // vivid pink
     { key: 'children', color: '#22c55e' }, // bright green
+    { key: 'men',      color: '#3b82f6' }, // bright blue
     { key: 'elderly',  color: '#f59e0b' }  // strong amber
   ];
+  const DEMO_LABELS = {
+    men: 'Men (18-64)',
+    women: 'Women (18-64)',
+    children: 'Children (<18)',
+    elderly: 'Elderly (65+)'
+  };
+  const DEMO_NOTES = {
+    men: 'Share of adult men among displaced people',
+    women: 'Share of adult women among displaced people',
+    children: 'Share of displaced children',
+    elderly: 'Share of displaced elderly adults'
+  };
+  const ensureDemoLegendRoot = () => {
+    let el = document.getElementById('demoLegend');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'demoLegend';
+    el.className = 'compare-table-wrapper demo-legend';
+    el.setAttribute('role', 'region');
+    el.setAttribute('aria-label', 'Demographic bars legend');
+    (document.getElementById('app') || document.body).appendChild(el);
+    return el;
+  };
+
+  const positionDemoLegend = () => {
+    const legend = document.getElementById('demoLegend');
+    const actions = document.getElementById('country-actions');
+    if (!legend || legend.style.display === 'none' || !actions) return;
+    const rect = actions.getBoundingClientRect();
+    const styles = window.getComputedStyle(actions);
+    const gap = 10;
+    const bottomPx = parseFloat(styles.bottom) || Math.max(0, window.innerHeight - rect.bottom);
+    const leftPx = parseFloat(styles.left) || rect.left || 0;
+    const width = Math.max(rect.width, 240);
+    legend.style.left = `${leftPx}px`;
+    legend.style.bottom = `${bottomPx + rect.height + gap}px`;
+    legend.style.width = `${width}px`;
+  };
+
+  const renderDemoLegend = () => {
+    const hasSelection = selectedCountries.size > 0;
+    const legend = hasSelection ? ensureDemoLegendRoot() : document.getElementById('demoLegend');
+    if (!legend) return;
+
+    if (!hasSelection) {
+      legend.classList.remove('show');
+      legend.style.pointerEvents = 'none';
+      setTimeout(() => {
+        if (!legend.classList.contains('show')) {
+          legend.style.display = 'none';
+          refitForViewport(false);
+        }
+      }, 260);
+      return;
+    }
+
+    const rows = DEMO_CATS.map(cat => `
+      <tr>
+        <td><span class="legend-chip" style="background:${cat.color}"></span></td>
+        <td>${DEMO_LABELS[cat.key] || cat.key}</td>
+      </tr>
+    `).join('');
+
+    legend.innerHTML = `
+      <div class="compare-legend-heading">
+        Demographic bars decomposition
+        <span class="compare-legend-sub">Each color shows that demographic group’s percentage of the country’s total refugees</span>
+      </div>
+      <table class="compare-table compare-legend-table">
+        <thead>
+          <tr>
+            <th scope="col">Color</th>
+            <th scope="col">Group</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+    legend.style.display = 'block';
+    legend.style.pointerEvents = 'none';
+    positionDemoLegend();
+    requestAnimationFrame(() => {
+      legend.classList.add('show');
+      legend.style.pointerEvents = 'auto';
+      refitForViewport(false);
+    });
+  };
   const seededRand = key => {
     const s = (key == null ? '' : String(key));
     let h = 2166136261 >>> 0;
@@ -431,6 +643,21 @@ const getCountryStyle = id => {
     }
 
     setFlows(flows) {
+      const getId = f => f?.id || f?.dest_iso3 || f?.dest;
+      const prevIds = new Set(this.flows.map(getId).filter(Boolean));
+      const nextIds = new Set(flows.map(getId).filter(Boolean));
+      const removedIds = new Set([...prevIds].filter(id => !nextIds.has(id)));
+
+      if (removedIds.size) {
+        this.particles.forEach(p => {
+          const pid = getId(p.flow);
+          if (pid && removedIds.has(pid)) {
+            p.fading = true;
+            p.fadeAlpha = 1;
+          }
+        });
+      }
+
       this.flows = flows.map(f => ({
         ...f,
         spawnAcc: 0
@@ -505,7 +732,9 @@ const getCountryStyle = id => {
             jitter,
             laneOffset,
             randOffset,
-            color: cat.color
+            color: cat.color,
+            fading: false,
+            fadeAlpha: 1
           });
         }
       }
@@ -514,8 +743,13 @@ const getCountryStyle = id => {
     update(dt) {
       const alive = [];
       for (const p of this.particles) {
-        p.u += dt * p.speed;
-        if (p.u <= 1) alive.push(p);
+        const speedMult = p.fading ? 2.2 : 1;
+        p.u += dt * p.speed * speedMult;
+        if (p.fading) {
+          p.fadeAlpha = (p.fadeAlpha ?? 1) - dt * 3.2;
+          if ((p.fadeAlpha ?? 0) <= 0) continue;
+        }
+        if (p.u <= 1 || p.fading) alive.push(p);
       }
       this.particles = alive;
     }
@@ -536,6 +770,7 @@ const getCountryStyle = id => {
 
       for (const p of this.particles) {
         const f = p.flow;
+        const fadeFactor = Math.max(0, Math.min(1, p.fadeAlpha ?? 1));
         const mainPt = this.pointAt(f, p.u);
         if (!mainPt) continue;
 
@@ -554,7 +789,7 @@ const getCountryStyle = id => {
           ctx.beginPath();
           ctx.arc(x, y, radius, 0, Math.PI * 2);
           ctx.fillStyle = p.color || f.color || '#ffffff';
-          ctx.globalAlpha = alpha;
+          ctx.globalAlpha = alpha * fadeFactor;
           ctx.fill();
         };
 
@@ -569,7 +804,7 @@ const getCountryStyle = id => {
           ctx.beginPath();
           ctx.rect(x - half, y - half, size, size);
           ctx.fillStyle = p.color || f.color || '#ffffff';
-          ctx.globalAlpha = alpha;
+          ctx.globalAlpha = alpha * fadeFactor;
           ctx.fill();
         };
 
@@ -584,7 +819,7 @@ const getCountryStyle = id => {
           ctx.moveTo(tailEnd.x, tailEnd.y);
           ctx.lineTo(mainPt.x, mainPt.y);
           ctx.strokeStyle = grad;
-          ctx.globalAlpha = 1;
+          ctx.globalAlpha = fadeFactor;
           ctx.lineWidth = 1;
           ctx.stroke();
         }
@@ -679,7 +914,9 @@ const STROKES = {
 const METRIC_COLORS = {
   gdp_pc: '#60a5fa',
   unemployment: '#fb923c',
-  alloc_pct_gdp: '#eab308'
+  alloc_pct_gdp: '#eab308',
+  mipex: '#8b5cf6',
+  opinion: '#14b8a6'
 };
 
 function ensureUkraineGradient(renderer) {
@@ -805,6 +1042,7 @@ const fmtPct = v => {
     safe(drawArrows, '[country-filter:arrows]');
     safe(drawMinis, '[country-filter:minis]');
     safe(redrawSelectionOutline, '[country-filter:outline]');
+    safe(renderDemoLegend, '[country-filter:legend]');
   }
 
   function buildCountryPicker(options) {
@@ -859,14 +1097,26 @@ const fmtPct = v => {
   }
 
   try {
-    const [mf, flowRaw, factorRows, summaryRows, unemploymentRows] = await Promise.all([
+    const [
+      mf,
+      flowRaw,
+      factorRows,
+      summaryRows,
+      unemploymentRows,
+      mipexRowsRaw,
+      opinionRowsRaw
+    ] = await Promise.all([
       d3.json('data/europe.geo.json')
         .catch(() => d3.json('data/europe.topo.json').catch(() => null)),
       d3.json('data/flows_ua_agg.json').catch(() => []),
       d3.csv('data/country_factors.csv', d3.autoType).catch(() => []),
       d3.csv('data/country_summary_clean.csv', d3.autoType).catch(() => []),
-      d3.csv('data/unemployment_clean.csv', d3.autoType).catch(() => [])
+      d3.csv('data/unemployment_clean.csv', d3.autoType).catch(() => []),
+      d3.csv('data/mipex.CSV', d3.autoType).catch(() => []),
+      d3.csv('data/publicopinion.csv', d3.autoType).catch(() => [])
     ]);
+    const mipexRows = Array.isArray(mipexRowsRaw) ? mipexRowsRaw.map(cleanKeys) : [];
+    const opinionRows = Array.isArray(opinionRowsRaw) ? opinionRowsRaw.map(cleanKeys) : [];
 
     mapData = mf;
 
@@ -916,17 +1166,11 @@ const fmtPct = v => {
       const dP   = +r.ua_perm_delta;
       const rat  = +r.ua_perm_per_refugee;
 
-      factors[id] = {
-        gdp_pc:              Number.isFinite(gdp) ? gdp : NaN,
-        unemployment:        Number.isFinite(un) ? un  : NaN,
-        ua_perm_delta:       Number.isFinite(dP)  ? dP  : NaN,
-        ua_perm_per_refugee: Number.isFinite(rat) ? rat : NaN,
-        alloc_pct_gdp:       NaN,
-        women: NaN,
-        children: NaN,
-        men: NaN,
-        elderly: NaN
-      };
+      const f = ensureFactor(id);
+      f.gdp_pc              = Number.isFinite(gdp) ? gdp : NaN;
+      f.unemployment        = Number.isFinite(un) ? un  : NaN;
+      f.ua_perm_delta       = Number.isFinite(dP)  ? dP  : NaN;
+      f.ua_perm_per_refugee = Number.isFinite(rat) ? rat : NaN;
     }
 
     // Merge allocations % GDP from country_summary_clean.csv
@@ -938,20 +1182,8 @@ const fmtPct = v => {
         const raw = +row['Allocations % GDP 2021'];
         if (!Number.isFinite(raw)) continue;
         const v = raw > 1 ? raw / 100 : raw / 100; // convert percent to share
-        if (!factors[iso]) {
-          factors[iso] = {
-            gdp_pc: NaN,
-            unemployment: NaN,
-            ua_perm_delta: NaN,
-            ua_perm_per_refugee: NaN,
-            alloc_pct_gdp: NaN,
-            women: NaN,
-            children: NaN,
-            men: NaN,
-            elderly: NaN
-          };
-        }
-        factors[iso].alloc_pct_gdp = v;
+        const f = ensureFactor(iso);
+        f.alloc_pct_gdp = v;
       }
     }
 
@@ -962,20 +1194,32 @@ const fmtPct = v => {
         if (!id || !ALLOWED_ISO3.has(id)) continue;
         const val = +r.unemployment;
         if (!Number.isFinite(val)) continue;
-        if (!factors[id]) {
-          factors[id] = {
-            gdp_pc: NaN,
-            unemployment: NaN,
-            ua_perm_delta: NaN,
-            ua_perm_per_refugee: NaN,
-            alloc_pct_gdp: NaN,
-            women: NaN,
-            children: NaN,
-            men: NaN,
-            elderly: NaN
-          };
-        }
-        factors[id].unemployment = val; // already fraction
+        const f = ensureFactor(id);
+        f.unemployment = val; // already fraction
+      }
+    }
+
+    // MIPEX scores (0–100)
+    if (Array.isArray(mipexRows)) {
+      for (const r of mipexRows) {
+        const id = String(r.dest_iso3 || r.iso3 || '').toUpperCase();
+        if (!id || !ALLOWED_ISO3.has(id)) continue;
+        const val = +r.mipex;
+        if (!Number.isFinite(val)) continue;
+        const f = ensureFactor(id);
+        f.mipex = val;
+      }
+    }
+
+    // Public opinion on welcoming refugees (%)
+    if (Array.isArray(opinionRows)) {
+      for (const r of opinionRows) {
+        const id = String(r.dest_iso3 || r.iso3 || '').toUpperCase();
+        if (!id || !ALLOWED_ISO3.has(id)) continue;
+        const raw = +r.opinion;
+        if (!Number.isFinite(raw)) continue;
+        const f = ensureFactor(id);
+        f.opinion = raw > 1 ? raw / 100 : raw;
       }
     }
 
@@ -983,27 +1227,15 @@ const fmtPct = v => {
     for (const f of flows) {
       const id = f.dest_iso3;
       if (!id) continue;
-      if (!factors[id]) {
-        factors[id] = {
-          gdp_pc: NaN,
-          unemployment: NaN,
-          ua_perm_delta: NaN,
-          ua_perm_per_refugee: NaN,
-          alloc_pct_gdp: NaN,
-          women: NaN,
-          children: NaN,
-          men: NaN,
-          elderly: NaN
-        };
-      }
+      const rec = ensureFactor(id);
       const frac = v => {
         if (!Number.isFinite(v)) return NaN;
         return v > 1 ? v / 100 : v;
       };
-      factors[id].women = frac(f.pct_women_adult);
-      factors[id].men = frac(f.pct_men_adult);
-      factors[id].children = frac(f.pct_children);
-      factors[id].elderly = frac(f.pct_elderly);
+      rec.women = frac(f.pct_women_adult);
+      rec.men = frac(f.pct_men_adult);
+      rec.children = frac(f.pct_children);
+      rec.elderly = frac(f.pct_elderly);
     }
 
     window.bb.flows   = flows;
@@ -1200,6 +1432,8 @@ const fmtPct = v => {
       const panel = document.getElementById('detailPanel');
       const body = document.getElementById('detail-body');
       if (!panel || !body) return;
+      const preserveScroll = panel.classList.contains('open');
+      const prevScroll = preserveScroll ? panel.scrollTop : 0;
       // keep comparePins in sync with selectedCountries
       comparePins.length = 0;
       selectedCountries.forEach(id => comparePins.push(id));
@@ -1223,12 +1457,14 @@ const fmtPct = v => {
           case 'gdp_pc':        return row.f.gdp_pc;
           case 'unemployment':  return row.f.unemployment;
           case 'alloc_pct_gdp': return row.f.alloc_pct_gdp;
+          case 'mipex':         return row.f.mipex;
+          case 'opinion':       return row.f.opinion;
           case 'total_refugees':return row.ref.total_refugees;
           default:              return row.name || row.id;
         }
       };
 
-      const allowedSortKeys = new Set(['country', 'gdp_pc', 'unemployment', 'alloc_pct_gdp', 'total_refugees']);
+      const allowedSortKeys = new Set(['country', 'gdp_pc', 'unemployment', 'alloc_pct_gdp', 'mipex', 'opinion', 'total_refugees']);
       if (!allowedSortKeys.has(compareSort.key)) {
         compareSort = { key: 'total_refugees', dir: 'desc' };
       }
@@ -1262,28 +1498,48 @@ const fmtPct = v => {
           label: 'GDP per capita',
           align: 'right',
           render: row => fmtNum(row.f.gdp_pc),
-          color: metricColorFor('gdp_pc')
+          color: metricColorFor('gdp_pc'),
+          info: METRIC_INFO.gdp_pc
         },
         {
           id: 'unemployment',
           label: 'Unemployment rate',
           align: 'right',
           render: row => fmtPct(row.f.unemployment),
-          color: metricColorFor('unemployment')
+          color: metricColorFor('unemployment'),
+          info: METRIC_INFO.unemployment
         },
         {
           id: 'alloc_pct_gdp',
           label: 'Support for Ukraine % GDP',
           align: 'right',
           render: row => fmtPct(row.f.alloc_pct_gdp),
-          color: metricColorFor('alloc_pct_gdp')
+          color: metricColorFor('alloc_pct_gdp'),
+          info: METRIC_INFO.alloc_pct_gdp
+        },
+        {
+          id: 'mipex',
+          label: 'MIPEX score (0–100)',
+          align: 'right',
+          render: row => fmtNum(row.f.mipex),
+          color: metricColorFor('mipex'),
+          info: METRIC_INFO.mipex
+        },
+        {
+          id: 'opinion',
+          label: 'Public support for refugees',
+          align: 'right',
+          render: row => fmtPct(row.f.opinion),
+          color: metricColorFor('opinion'),
+          info: METRIC_INFO.opinion
         },
         {
           id: 'total_refugees',
           label: 'Total refugees',
           align: 'right',
           render: row => formatCount(row.ref.total_refugees),
-          color: '#cbd5e1'
+          color: '#cbd5e1',
+          info: METRIC_INFO.total_refugees
         }
       ];
 
@@ -1347,6 +1603,11 @@ const fmtPct = v => {
         panel.classList.remove('open');
         panel.style.display = 'none';
       }
+      if (preserveScroll) {
+        requestAnimationFrame(() => {
+          panel.scrollTop = prevScroll;
+        });
+      }
 
       function renderCharts() {
         const rootEl = body.querySelector('.compare-charts');
@@ -1361,6 +1622,8 @@ const fmtPct = v => {
             case 'gdp_pc': return fmtNum(row.f.gdp_pc);
             case 'unemployment': return fmtPct(row.f.unemployment);
             case 'alloc_pct_gdp': return fmtPct(row.f.alloc_pct_gdp);
+            case 'mipex': return fmtNum(row.f.mipex);
+            case 'opinion': return fmtPct(row.f.opinion);
             case 'total_refugees': return formatCount(row.ref.total_refugees);
             default: return '';
           }
@@ -1377,9 +1640,27 @@ const fmtPct = v => {
           if (!values.length) return;
 
           const card = root.append('div').attr('class', 'chart-card');
-          card.append('div')
-            .attr('class', 'chart-title')
-            .text(col.label);
+          const title = card.append('div')
+            .attr('class', 'chart-title chart-title-row')
+            .html(() => {
+              const info = col.info
+                ? `<button type="button" class="info-icon" aria-label="About ${col.label}" data-title="${col.info.title || col.label}" data-body="${col.info.desc || ''}" data-source-label="${col.info.source?.label || ''}" data-source-href="${col.info.source?.href || ''}">i</button>`
+                : '';
+              const sortLabel = (() => {
+                if (col.id === 'alloc_pct_gdp') return 'Sort by support for Ukraine.';
+                if (col.id === 'opinion') return 'Sort by public support';
+                return `Sort by ${col.label}`;
+              })();
+              const sortBtn = col.id !== 'country'
+                ? `<button type="button" class="chart-sort-btn" data-key="${col.id}">${sortLabel}</button>`
+                : '';
+              return `
+                <span class="chart-title-text">${col.label}</span>
+                <span class="chart-title-actions">
+                  ${sortBtn}
+                  ${info}
+                </span>`;
+            });
 
           const barH = 14;
           const gap = 8;
@@ -1452,6 +1733,80 @@ const fmtPct = v => {
           renderCompare(panel.classList.contains('open'), { resetSort: false });
         });
       });
+
+      const infoIcons = body.querySelectorAll('.info-icon');
+      infoIcons.forEach(btn => {
+        const showTip = (sticky = false) => {
+          const title = btn.dataset.title || '';
+          const desc = btn.dataset.body || '';
+          const srcLabel = btn.dataset.sourceLabel || '';
+          const srcHref = btn.dataset.sourceHref || '';
+          const sourceHtml = srcHref
+            ? `<div class="info-source">Source: <a href="${srcHref}" target="_blank" rel="noopener">${srcLabel || srcHref}</a></div>`
+            : '';
+          const html = `
+            <div class="info-title">${title}</div>
+            <div class="info-desc">${desc}</div>
+            ${sourceHtml}
+          `;
+          const rect = btn.getBoundingClientRect();
+          if (sticky) metricTooltip.setActive(btn, html, rect);
+          else metricTooltip.show(html, rect);
+        };
+        const hideTip = () => metricTooltip.hide();
+        btn.addEventListener('mouseenter', e => {
+          e.stopPropagation();
+          if (metricTooltip.isActive(btn)) return;
+          showTip(false);
+        });
+        btn.addEventListener('mouseleave', () => {
+          if (metricTooltip.isActive(btn)) return;
+          hideTip();
+        });
+        btn.addEventListener('focus', () => {
+          if (metricTooltip.isActive(btn)) return;
+          showTip(false);
+        });
+        btn.addEventListener('blur', () => {
+          if (metricTooltip.isActive(btn)) return;
+          hideTip();
+        });
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          if (metricTooltip.isActive(btn)) {
+            metricTooltip.clearActive();
+          } else {
+            metricTooltip.clearActive();
+            showTip(true);
+          }
+        });
+      });
+
+      const chartSortBtns = body.querySelectorAll('.chart-sort-btn');
+      chartSortBtns.forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const key = btn.dataset.key;
+          if (!key || key === 'country') return;
+          if (compareSort.key === key) {
+            compareSort.dir = compareSort.dir === 'asc' ? 'desc' : 'asc';
+          } else {
+            compareSort = { key, dir: 'desc' };
+          }
+          renderCompare(panel.classList.contains('open'), { resetSort: false });
+        });
+      });
+
+      if (!infoOutsideHooked) {
+        document.addEventListener('click', e => {
+          if (!metricTooltip.hasActive()) return;
+          const target = e.target;
+          const insideTooltip = metricTooltip.el?.contains(target);
+          const isIcon = target?.closest?.('.info-icon');
+          if (!insideTooltip && !isIcon) metricTooltip.clearActive();
+        });
+        infoOutsideHooked = true;
+      }
     }
 
     function bez(a, c, b, n = 40) {
@@ -1715,12 +2070,7 @@ const fmtPct = v => {
         .attr('class', 'legend-title')
         .text('Particle color — demographic');
 
-      const labels = {
-        men: 'Men (18-64)',
-        women: 'Women (18-64)',
-        children: 'Children',
-        elderly: 'Elderly (65+)'
-      };
+      const labels = DEMO_LABELS;
 
       const rows = svg
         .selectAll('.row')
@@ -1770,12 +2120,7 @@ const fmtPct = v => {
         .attr('class', 'legend-title')
         .text('Country minis — demographics');
 
-      const labels = {
-        women: 'Women',
-        children: 'Children',
-        men: 'Men',
-        elderly: 'Elderly'
-      };
+      const labels = DEMO_LABELS;
 
       const rows = svg
         .selectAll('.row')
@@ -1808,7 +2153,7 @@ const fmtPct = v => {
       if (!totalScale) return;
 
       const containerW = root.node()?.clientWidth || 680;
-      const W = Math.max(240, containerW);
+      const W = Math.max(120, containerW);
       const H = 60;
       const P = { l: 16, r: 16, t: 12, b: 12 };
       const gradId = 'totalGrad';
@@ -1821,7 +2166,8 @@ const fmtPct = v => {
         .append('svg')
         .attr('class', 'legend')
         .attr('width', '100%')
-        .attr('height', H);
+        .attr('height', H)
+        .attr('viewBox', `0 0 ${W} ${H}`);
 
       svg
         .append('text')
@@ -1847,7 +2193,7 @@ const fmtPct = v => {
           .attr('stop-color', totalScale(v));
       }
 
-      const gradW = Math.max(120, W - P.l - P.r);
+      const gradW = Math.max(80, W - P.l - P.r);
       const g = svg
         .append('g')
         .attr('transform', `translate(${P.l},${P.t + 8})`);
@@ -1906,6 +2252,11 @@ const fmtPct = v => {
     map.invalidateSize();
     refitForViewport(false);
     if (flowEngine) flowEngine.dirty = true;
+    safe(positionDemoLegend, '[resize:legend]');
+    if (selectedCountries.size) {
+      const isOpen = document.getElementById('detailPanel')?.classList.contains('open');
+      safe(() => renderCompare(isOpen, { resetSort: false }), '[resize:compare]');
+    }
   });
 
     // UI
