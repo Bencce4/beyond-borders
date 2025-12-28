@@ -69,8 +69,18 @@ let renderCompare = () => {};
 let flowEngine = null;
 let compareSort = { key: 'total_refugees', dir: 'desc' };
 let refitForViewport = () => {};
+let uiScale = 1;
 
-function showDetail(html) {
+const BASE_UI_WIDTH = 1440;
+const computeUiScale = () =>
+  Math.max(0.9, Math.min(1.15, (window.innerWidth || BASE_UI_WIDTH) / BASE_UI_WIDTH));
+const applyUiScale = () => {
+  uiScale = computeUiScale();
+  document.documentElement.style.setProperty('--ui-scale', uiScale.toFixed(3));
+};
+
+function showDetail(html, opts = {}) {
+  const { skipRefit = false } = opts;
   const panel = document.getElementById('detailPanel');
   const body  = document.getElementById('detail-body');
   if (!panel || !body) return;
@@ -86,10 +96,14 @@ function showDetail(html) {
   if (toggleBtn) toggleBtn.style.display = 'none';
   if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'true');
   document.body.classList.add('panel-open');
-  refitForViewport?.();
+  if (!skipRefit) refitForViewport?.();
 }
 
 function hideDetail() {
+  const force = arguments.length ? !!arguments[0] : false;
+  const opts = arguments.length > 1 ? arguments[1] || {} : {};
+  const skipRefit = !!opts.skipRefit;
+  if (!force && selectedCountries.size >= 2) return;
   const panel = document.getElementById('detailPanel');
   if (panel) {
     panel.classList.remove('open');
@@ -106,19 +120,13 @@ function hideDetail() {
     }
     document.body.classList.remove('panel-open');
     updateCompareToggle();
-    refitForViewport?.();
+    if (!skipRefit) refitForViewport?.();
   }
 }
 
 function updateCompareToggle() {
   const wrap = document.querySelector('.detail-toggle-wrap');
-  if (!wrap) return;
-  const panelOpen = document.getElementById('detailPanel')?.classList.contains('open');
-  if (panelOpen) {
-    wrap.style.display = 'none';
-    return;
-  }
-  wrap.style.display = selectedCountries.size > 1 ? 'flex' : 'none';
+  if (wrap) wrap.style.display = 'none';
 }
 
   function redrawSelectionOutline() {
@@ -150,10 +158,11 @@ function updateCompareToggle() {
     window.bb.ready = true;
     return;
   }
+  applyUiScale();
 
   // Map (no basemap)
   // Allow extra room east so the map can be panned under the open compare panel
-  const EUROPE_BOUNDS = L.latLngBounds([34, -10], [71.5, 60]);
+  const EUROPE_BOUNDS = L.latLngBounds([32, -20], [72, 70]);
   const computePadding = () => {
     const panelOpen = document.body.classList.contains('panel-open');
     const panelEl = document.getElementById('detailPanel');
@@ -184,7 +193,7 @@ function updateCompareToggle() {
   const map = L.map('map', {
     zoomControl: true,
     attributionControl: false,
-    minZoom: 4.25,
+    minZoom: 3.75,
     maxZoom: 7.5,
     zoomSnap: 0.25,
     zoomDelta: 0.25,
@@ -323,6 +332,7 @@ let infoOutsideHooked = false;
       alloc_pct_gdp: NaN,
       mipex: NaN,
       opinion: NaN,
+      ua_pop_2021: NaN,
       women: NaN,
       children: NaN,
       men: NaN,
@@ -360,6 +370,11 @@ let infoOutsideHooked = false;
       title: 'Public support for refugees',
       desc: 'Survey share of people who support welcoming refugees.',
       source: { label: 'eurostat/public opinion', href: 'https://europa.eu/eurobarometer/surveys/detail/3372' }
+    },
+    ua_pop_2021: {
+      title: 'Pre-war Ukrainian population (2021)',
+      desc: 'Registered Ukrainian citizens residing in the country before Russia’s full-scale invasion (2021).',
+      source: { label: 'residence permits (Eurostat)', href: 'data/migr_resvalid__custom_19375420_linear_2_0.csv' }
     },
     total_refugees: {
       title: 'Total refugees',
@@ -429,7 +444,7 @@ const getCountryStyle = id => {
   if (id === 'NOR' || id === 'CHE' || id === 'ISL') {
     return {
       color: isSel ? '#ffffff' : '#000000',
-      weight: isSel ? 2 : 1.0,
+      weight: isSel ? 1.4 : 1.0,
       opacity: 1,
       fill: true,
       fillOpacity: 0.55,
@@ -439,7 +454,7 @@ const getCountryStyle = id => {
   if (GRAY_NON_EU.has(id)) {
     return {
       color: isSel ? '#ffffff' : '#000000',
-      weight: isSel ? 2 : 1.0,
+      weight: isSel ? 1.4 : 1.0,
       opacity: 1,
       fill: true,
       fillOpacity: 0.55,
@@ -449,7 +464,7 @@ const getCountryStyle = id => {
   if (id === 'UKR') {
     return {
       color: isSel ? '#ffffff' : '#000000',
-      weight: isSel ? 2 : 1.0,
+      weight: isSel ? 1.4 : 1.0,
       opacity: 1,
       fill: true,
       fillOpacity: 0.7,
@@ -459,7 +474,7 @@ const getCountryStyle = id => {
   if (!isAllowed) {
     return {
       color: isSel ? '#ffffff' : '#0f172a',
-      weight: isSel ? 2 : 1.0,
+      weight: isSel ? 1.4 : 1.0,
       opacity: 1,
       fill: true,
       fillOpacity: 0.6,
@@ -469,7 +484,7 @@ const getCountryStyle = id => {
   const fill = hasData && totalScale ? totalScale(totalVal) : '#9ca3af';
   return {
     color: isSel ? '#ffffff' : '#000000',
-    weight: isSel ? 2 : 1.0,
+    weight: isSel ? 1.4 : 1.0,
     opacity: 1,
     fill: true,
     fillOpacity: 0.55,
@@ -537,7 +552,6 @@ const getCountryStyle = id => {
       setTimeout(() => {
         if (!legend.classList.contains('show')) {
           legend.style.display = 'none';
-          refitForViewport(false);
         }
       }, 260);
       return;
@@ -552,7 +566,7 @@ const getCountryStyle = id => {
 
     legend.innerHTML = `
       <div class="compare-legend-heading">
-        Demographic bars decomposition
+        Demographic bars composition
         <span class="compare-legend-sub">Each color shows that demographic group’s percentage of the country’s total refugees</span>
       </div>
       <table class="compare-table compare-legend-table">
@@ -571,7 +585,6 @@ const getCountryStyle = id => {
     requestAnimationFrame(() => {
       legend.classList.add('show');
       legend.style.pointerEvents = 'auto';
-      refitForViewport(false);
     });
   };
   const seededRand = key => {
@@ -916,7 +929,8 @@ const METRIC_COLORS = {
   unemployment: '#fb923c',
   alloc_pct_gdp: '#eab308',
   mipex: '#8b5cf6',
-  opinion: '#14b8a6'
+  opinion: '#14b8a6',
+  ua_pop_2021: '#a3e635'
 };
 
 function ensureUkraineGradient(renderer) {
@@ -1043,6 +1057,7 @@ const fmtPct = v => {
     safe(drawMinis, '[country-filter:minis]');
     safe(redrawSelectionOutline, '[country-filter:outline]');
     safe(renderDemoLegend, '[country-filter:legend]');
+    safe(enforceComparePanel, '[country-filter:compare]');
   }
 
   function buildCountryPicker(options) {
@@ -1083,6 +1098,7 @@ const fmtPct = v => {
       refreshVisibleCountries();
       syncCompareFromSelection(false, true);
       updateCompareToggle();
+      enforceComparePanel();
     });
 
     document.getElementById('countrySelectNone')?.addEventListener('click', () => {
@@ -1091,32 +1107,36 @@ const fmtPct = v => {
       refreshVisibleCountries();
       syncCompareFromSelection(false, true);
       updateCompareToggle();
+      enforceComparePanel();
     });
 
     updateCountrySummary();
   }
 
   try {
-    const [
-      mf,
-      flowRaw,
-      factorRows,
-      summaryRows,
-      unemploymentRows,
-      mipexRowsRaw,
-      opinionRowsRaw
-    ] = await Promise.all([
-      d3.json('data/europe.geo.json')
-        .catch(() => d3.json('data/europe.topo.json').catch(() => null)),
-      d3.json('data/flows_ua_agg.json').catch(() => []),
-      d3.csv('data/country_factors.csv', d3.autoType).catch(() => []),
-      d3.csv('data/country_summary_clean.csv', d3.autoType).catch(() => []),
-      d3.csv('data/unemployment_clean.csv', d3.autoType).catch(() => []),
-      d3.csv('data/mipex.CSV', d3.autoType).catch(() => []),
-      d3.csv('data/publicopinion.csv', d3.autoType).catch(() => [])
-    ]);
-    const mipexRows = Array.isArray(mipexRowsRaw) ? mipexRowsRaw.map(cleanKeys) : [];
-    const opinionRows = Array.isArray(opinionRowsRaw) ? opinionRowsRaw.map(cleanKeys) : [];
+  const [
+    mf,
+    flowRaw,
+    factorRows,
+    summaryRows,
+    unemploymentRows,
+    mipexRowsRaw,
+    opinionRowsRaw,
+    uaPopRowsRaw
+  ] = await Promise.all([
+    d3.json('data/europe.geo.json')
+      .catch(() => d3.json('data/europe.topo.json').catch(() => null)),
+    d3.json('data/flows_ua_agg.json').catch(() => []),
+    d3.csv('data/country_factors.csv', d3.autoType).catch(() => []),
+    d3.csv('data/country_summary_clean.csv', d3.autoType).catch(() => []),
+    d3.csv('data/unemployment_clean.csv', d3.autoType).catch(() => []),
+    d3.csv('data/mipex.CSV', d3.autoType).catch(() => []),
+    d3.csv('data/publicopinion.csv', d3.autoType).catch(() => []),
+    d3.csv('data/ua_population_2021_respermits.csv', d3.autoType).catch(() => [])
+  ]);
+  const mipexRows = Array.isArray(mipexRowsRaw) ? mipexRowsRaw.map(cleanKeys) : [];
+  const opinionRows = Array.isArray(opinionRowsRaw) ? opinionRowsRaw.map(cleanKeys) : [];
+  const uaPopRows = Array.isArray(uaPopRowsRaw) ? uaPopRowsRaw.map(cleanKeys) : [];
 
     mapData = mf;
 
@@ -1201,11 +1221,11 @@ const fmtPct = v => {
 
     // MIPEX scores (0–100)
     if (Array.isArray(mipexRows)) {
-      for (const r of mipexRows) {
-        const id = String(r.dest_iso3 || r.iso3 || '').toUpperCase();
-        if (!id || !ALLOWED_ISO3.has(id)) continue;
-        const val = +r.mipex;
-        if (!Number.isFinite(val)) continue;
+    for (const r of mipexRows) {
+      const id = String(r.dest_iso3 || r.iso3 || '').toUpperCase();
+      if (!id || !ALLOWED_ISO3.has(id)) continue;
+      const val = +r.mipex;
+      if (!Number.isFinite(val)) continue;
         const f = ensureFactor(id);
         f.mipex = val;
       }
@@ -1220,6 +1240,18 @@ const fmtPct = v => {
         if (!Number.isFinite(raw)) continue;
         const f = ensureFactor(id);
         f.opinion = raw > 1 ? raw / 100 : raw;
+      }
+    }
+
+    // Ukrainian resident population pre-invasion (2021)
+    if (Array.isArray(uaPopRows)) {
+      for (const r of uaPopRows) {
+        const id = String(r.dest_iso3 || r.iso3 || '').toUpperCase();
+        if (!id || !ALLOWED_ISO3.has(id)) continue;
+        const raw = +r.ua_population_2021;
+        if (!Number.isFinite(raw)) continue;
+        const f = ensureFactor(id);
+        f.ua_pop_2021 = raw;
       }
     }
 
@@ -1323,9 +1355,18 @@ const fmtPct = v => {
           const hasFlow = !!destLL[id];
 
           // Base position for minis = arrow destination if we have it; else polygon center
-          const base = hasFlow
+          let base = hasFlow
             ? destLL[id]
             : [polyCenter.lat, polyCenter.lng];
+          if (id === 'SWE') {
+            base = [base[0], base[1] - 3.0]; // nudge Sweden minis left a bit more
+          }
+          if (id === 'PRT') {
+            base = [base[0] - 0.8, base[1]]; // nudge Portugal minis down slightly
+          }
+          if (id === 'ESP') {
+            base = [base[0] + 0.4, base[1] + 0.6]; // nudge Spain minis up/right slightly
+          }
 
           // Minis live at base
           centroidLL[id] = [base[0], base[1]];
@@ -1459,12 +1500,13 @@ const fmtPct = v => {
           case 'alloc_pct_gdp': return row.f.alloc_pct_gdp;
           case 'mipex':         return row.f.mipex;
           case 'opinion':       return row.f.opinion;
+          case 'ua_pop_2021':   return row.f.ua_pop_2021;
           case 'total_refugees':return row.ref.total_refugees;
           default:              return row.name || row.id;
         }
       };
 
-      const allowedSortKeys = new Set(['country', 'gdp_pc', 'unemployment', 'alloc_pct_gdp', 'mipex', 'opinion', 'total_refugees']);
+      const allowedSortKeys = new Set(['country', 'gdp_pc', 'unemployment', 'alloc_pct_gdp', 'mipex', 'opinion', 'ua_pop_2021', 'total_refugees']);
       if (!allowedSortKeys.has(compareSort.key)) {
         compareSort = { key: 'total_refugees', dir: 'desc' };
       }
@@ -1532,6 +1574,14 @@ const fmtPct = v => {
           render: row => fmtPct(row.f.opinion),
           color: metricColorFor('opinion'),
           info: METRIC_INFO.opinion
+        },
+        {
+          id: 'ua_pop_2021',
+          label: 'Pre-war Ukrainian population (2021)',
+          align: 'right',
+          render: row => fmtNum(row.f.ua_pop_2021),
+          color: metricColorFor('ua_pop_2021'),
+          info: METRIC_INFO.ua_pop_2021
         },
         {
           id: 'total_refugees',
@@ -1624,6 +1674,7 @@ const fmtPct = v => {
             case 'alloc_pct_gdp': return fmtPct(row.f.alloc_pct_gdp);
             case 'mipex': return fmtNum(row.f.mipex);
             case 'opinion': return fmtPct(row.f.opinion);
+            case 'ua_pop_2021': return fmtNum(row.f.ua_pop_2021);
             case 'total_refugees': return formatCount(row.ref.total_refugees);
             default: return '';
           }
@@ -1649,6 +1700,8 @@ const fmtPct = v => {
               const sortLabel = (() => {
                 if (col.id === 'alloc_pct_gdp') return 'Sort by support for Ukraine.';
                 if (col.id === 'opinion') return 'Sort by public support';
+                if (col.id === 'mipex') return 'Sort by MIPEX score';
+                if (col.id === 'ua_pop_2021') return 'Sort by pre-war Ukrainian population';
                 return `Sort by ${col.label}`;
               })();
               const sortBtn = col.id !== 'country'
@@ -1662,11 +1715,19 @@ const fmtPct = v => {
                 </span>`;
             });
 
-          const barH = 14;
-          const gap = 8;
-          const margin = { t: 12, r: 16, b: 12, l: 70 }; // shift bars further left
-          const containerW = Math.max(320, (card.node()?.clientWidth || 400));
-          const usable = containerW * 0.9;
+    const viewport = Math.max(320, window.innerWidth || 1200);
+    const scale = Math.min(1.25, Math.max(0.88, viewport / 1400)) * uiScale;
+          const barH = 12 * scale;
+          const gap = 6 * scale;
+          const marginBase = { t: 12, r: 36, b: 12, l: 60 };
+          const margin = {
+            t: marginBase.t * scale,
+            r: marginBase.r * scale,
+            b: marginBase.b * scale,
+            l: Math.max(42 * scale, marginBase.l * scale * 0.9) // keep labels close to the bubble
+          };
+          const containerW = Math.max(320, Math.min((card.node()?.clientWidth || 400), 540));
+          const usable = containerW * 0.86;
           const width = usable;
           const height = values.length * (barH + gap) + margin.t + margin.b - gap;
 
@@ -1703,7 +1764,7 @@ const fmtPct = v => {
             .enter()
             .append('text')
             .attr('class', 'bar-label')
-            .attr('x', -10)
+            .attr('x', -6)
             .attr('y', (_, i) => i * (barH + gap) + barH * 0.7)
             .attr('text-anchor', 'end')
             .text(d => `${d.name}`);
@@ -1713,7 +1774,7 @@ const fmtPct = v => {
             .enter()
             .append('text')
             .attr('class', 'bar-value')
-            .attr('x', d => x(Math.max(0, +d.val)) + 6)
+            .attr('x', d => x(Math.max(0, +d.val)) + 4)
             .attr('y', (_, i) => i * (barH + gap) + barH * 0.7)
             .text(d => formatVal(col, d.row));
         });
@@ -1821,6 +1882,16 @@ const fmtPct = v => {
       return pts;
     }
 
+    function enforceComparePanel() {
+      const needOpen = selectedCountries.size >= 2;
+      if (needOpen) {
+        safe(() => renderCompare(true, { resetSort: false }), '[enforce:compare-open]');
+        showDetail(null, { skipRefit: true });
+      } else {
+        hideDetail(true, { skipRefit: true });
+      }
+    }
+
   function drawArrows() {
     arrowsGroup.clearLayers();
     if (!flows.length) {
@@ -1910,16 +1981,20 @@ const fmtPct = v => {
     return [p.x, p.y];
   }
 
-    function drawMinis() {
-      const active = getActiveFactors();
-      const mode   = getBoxMode();
-      const ids    = Object.keys(factors).filter(isCountryVisible);
-      const shouldTransition = (mode !== drawMinis._lastMode);
+  function drawMinis() {
+    const active = getActiveFactors();
+    const mode   = getBoxMode();
+    const ids    = Object.keys(factors).filter(isCountryVisible);
+    const shouldTransition = (mode !== drawMinis._lastMode);
+    const zoom = map?.getZoom ? map.getZoom() : MIN_COMFORT_ZOOM;
+    const baseZoom = map?.getMinZoom ? map.getMinZoom() : MIN_COMFORT_ZOOM;
+    const zoomScale = map?.getZoomScale ? map.getZoomScale(zoom, baseZoom) : Math.pow(2, zoom - baseZoom);
+    const zoomFactor = Math.max(1.0, Math.min(3.5, zoomScale * uiScale)); // minis grow as you zoom in, tied to UI scale
 
-      // Only keep variables we actually know how to transform + have scales for
-      const activeVars = active.filter(v =>
-        typeof XFORM[v] === 'function' && miniScale[v]
-      );
+    // Only keep variables we actually know how to transform + have scales for
+    const activeVars = active.filter(v =>
+      typeof XFORM[v] === 'function' && miniScale[v]
+    );
 
       if (!activeVars.length) {
         countryLabels.forEach(marker => {
@@ -1943,6 +2018,9 @@ const fmtPct = v => {
           if (INVERTED_VARS.has(v)) {
             s = BOX_MIN + (BOX_MAX - s); // invert scale so higher value -> smaller box
           }
+          const scaledMin = BOX_MIN * zoomFactor;
+          const scaledMax = BOX_MAX * zoomFactor;
+          s = Math.max(scaledMin, Math.min(scaledMax, s * zoomFactor));
           return { varName: v, s, value: +rec[v] || 0 };
         });
 
@@ -1973,9 +2051,9 @@ const fmtPct = v => {
 
       const rectsEnter = rects.enter()
         .append('rect')
-        .attr('rx', 1)
-        .attr('ry', 1)
-        .attr('stroke-width', 0.8)
+        .attr('rx', 2.5)
+        .attr('ry', 2.5)
+        .attr('stroke-width', 1)
         .style('opacity', 0)
         .style('pointer-events', 'all')
         .attr('height', 0)
@@ -2008,8 +2086,9 @@ const fmtPct = v => {
           miniTooltip.style.display = 'none';
         });
 
-      const baseW = 10;
-      const baseGap = 6;
+      const widthScale = Math.max(0.9, Math.min(2.0, zoomFactor * uiScale));
+      const baseW = 12 * widthScale;
+      const baseGap = 7 * widthScale;
 
       const applyPos = sel => sel
         .attr('x', function (s, i) {
@@ -2253,6 +2332,7 @@ const fmtPct = v => {
     refitForViewport(false);
     if (flowEngine) flowEngine.dirty = true;
     safe(positionDemoLegend, '[resize:legend]');
+    applyUiScale();
     if (selectedCountries.size) {
       const isOpen = document.getElementById('detailPanel')?.classList.contains('open');
       safe(() => renderCompare(isOpen, { resetSort: false }), '[resize:compare]');
@@ -2289,31 +2369,9 @@ const fmtPct = v => {
     const toggleBtn = document.getElementById('detailToggle');
     const toggleArrow = document.getElementById('detailToggleArrow');
     const toggleWrap = document.querySelector('.detail-toggle-wrap');
-    if (toggleBtn) {
-      toggleBtn.addEventListener('click', () => {
-        const panel = document.getElementById('detailPanel');
-        if (!panel) return;
-        const willOpen = !panel.classList.contains('open');
-        if (willOpen) {
-          if (selectedCountries.size === 0 && countryIds?.length) {
-            selectedCountries = new Set(countryIds);
-            syncCountryCheckboxes();
-            refreshVisibleCountries();
-          }
-          safe(() => renderCompare(false, { resetSort: false }), '[ui:toggle-compare]');
-          showDetail();
-          updateCompareToggle();
-        } else {
-          hideDetail();
-          updateCompareToggle();
-        }
-      });
-    }
-    if (toggleArrow) {
-      toggleArrow.addEventListener('click', () => {
-        toggleBtn?.click();
-      });
-    }
+    if (toggleBtn) toggleBtn.style.display = 'none';
+    if (toggleArrow) toggleArrow.style.display = 'none';
+    if (toggleWrap) toggleWrap.style.display = 'none';
 
     const updateToggleVisibility = () => {
       updateCompareToggle();
@@ -2329,6 +2387,7 @@ const fmtPct = v => {
           refreshVisibleCountries();
           syncCompareFromSelection(false, true);
           updateCompareToggle();
+          enforceComparePanel();
         }
       }
     });
@@ -2342,6 +2401,7 @@ const fmtPct = v => {
         renderCompare(false);
         hideDetail();
         updateCompareToggle();
+        enforceComparePanel();
       });
     }
 
