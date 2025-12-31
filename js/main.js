@@ -71,9 +71,30 @@ let compareSort = { key: 'total_refugees', dir: 'desc' };
 let refitForViewport = () => {};
 let uiScale = 1;
 
-const BASE_UI_WIDTH = 1440;
-const computeUiScale = () =>
-  Math.max(0.9, Math.min(1.15, (window.innerWidth || BASE_UI_WIDTH) / BASE_UI_WIDTH));
+const DEFAULT_BASE_VIEWPORT = { width: 1440, height: 900 };
+const BASE_VIEWPORT = (() => {
+  const fallback = { ...DEFAULT_BASE_VIEWPORT };
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const stored = JSON.parse(localStorage.getItem('bb:baseViewport') || '{}');
+    if (Number.isFinite(stored.width) && Number.isFinite(stored.height)) {
+      return stored;
+    }
+  } catch (_) {}
+  const width = Math.max(320, window.innerWidth || fallback.width);
+  const height = Math.max(480, window.innerHeight || fallback.height);
+  const base = { width, height };
+  try { localStorage.setItem('bb:baseViewport', JSON.stringify(base)); } catch (_) {}
+  return base;
+})();
+const computeUiScale = () => {
+  const baseW = BASE_VIEWPORT.width || DEFAULT_BASE_VIEWPORT.width;
+  const baseH = BASE_VIEWPORT.height || DEFAULT_BASE_VIEWPORT.height;
+  const vw = Math.max(320, window.innerWidth || baseW);
+  const vh = Math.max(480, window.innerHeight || baseH);
+  const raw = Math.min(vw / baseW, vh / baseH);
+  return Math.max(0.75, Math.min(1.4, raw));
+};
 const applyUiScale = () => {
   uiScale = computeUiScale();
   document.documentElement.style.setProperty('--ui-scale', uiScale.toFixed(3));
@@ -246,15 +267,18 @@ const miniTooltip = (() => {
   document.body.appendChild(el);
   return el;
 })();
-  const metricTooltip = (() => {
-    const el = document.createElement('div');
-    el.className = 'info-tooltip';
-    el.style.position = 'fixed';
-    el.style.pointerEvents = 'none';
+const metricTooltip = (() => {
+  const el = document.createElement('div');
+  el.className = 'info-tooltip';
+  el.style.position = 'fixed';
+  el.style.pointerEvents = 'none';
   el.style.zIndex = '9999';
   el.style.display = 'none';
   document.body.appendChild(el);
   let activeBtn = null;
+  let tooltipHover = false;
+  el.addEventListener('mouseenter', () => { tooltipHover = true; });
+  el.addEventListener('mouseleave', () => { tooltipHover = false; clearActive(); });
   const show = (html, rect) => {
     el.innerHTML = html;
     el.style.display = 'block';
@@ -283,7 +307,8 @@ const miniTooltip = (() => {
   };
   const isActive = btn => activeBtn === btn;
   const hasActive = () => !!activeBtn;
-  return { el, show, hide, setActive, clearActive, isActive, hasActive };
+  const isTooltipHovered = () => tooltipHover;
+  return { el, show, hide, setActive, clearActive, isActive, hasActive, isTooltipHovered };
 })();
 let infoOutsideHooked = false;
 
@@ -616,20 +641,28 @@ const getCountryStyle = id => {
       this.dirty = true;
       this.maxParticles = 12000;
       this.fade = 0.06; // fade a bit quicker so tails vanish faster
+      this.dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
       this._tick = this.step.bind(this);
       this.align = this.align.bind(this);
-      this.map.on('move zoom zoomend resize', () => { this.dirty = true; this.align(); });
+      this.map.on('move zoom zoomend', () => { this.dirty = true; this.align(); });
+      this.map.on('resize', () => { this.dirty = true; this.resize(); });
       this.map.on('zoomend', () => { this.dirty = true; });
       this.resize();
     }
 
     resize() {
       const size = this.map.getSize();
-      if (this.canvas.width !== size.x || this.canvas.height !== size.y) {
-        this.canvas.width = size.x;
-        this.canvas.height = size.y;
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      this.dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+      const targetW = Math.round(size.x * this.dpr);
+      const targetH = Math.round(size.y * this.dpr);
+      if (this.canvas.width !== targetW || this.canvas.height !== targetH) {
+        this.canvas.width = targetW;
+        this.canvas.height = targetH;
+        this.canvas.style.width = `${size.x}px`;
+        this.canvas.style.height = `${size.y}px`;
       }
+      this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      this.ctx.clearRect(0, 0, targetW / this.dpr, targetH / this.dpr);
       this.align();
       this.dirty = true;
     }
@@ -649,9 +682,11 @@ const getCountryStyle = id => {
     }
 
     clear(resetParticles = false) {
+      const dpr = this.dpr || 1;
       this.ctx.globalCompositeOperation = 'source-over';
       this.ctx.globalAlpha = 1;
-      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.ctx.clearRect(0, 0, this.canvas.width / dpr, this.canvas.height / dpr);
       if (resetParticles) this.particles = [];
     }
 
@@ -769,10 +804,12 @@ const getCountryStyle = id => {
 
     drawFrame() {
       const ctx = this.ctx;
+      const dpr = this.dpr || 1;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       // Clear frame to avoid lingering streaks
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
-      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      ctx.clearRect(0, 0, this.canvas.width / dpr, this.canvas.height / dpr);
 
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -977,7 +1014,7 @@ function ensureUkraineGradient(renderer) {
   }
 }
 
-const BOX_MIN = 8, BOX_MAX = 30;
+const BOX_MIN = 6, BOX_MAX = 24;
 let miniScale = {};
 
 const XFORM = {
@@ -1695,23 +1732,22 @@ const fmtPct = v => {
             .attr('class', 'chart-title chart-title-row')
             .html(() => {
               const info = col.info
-                ? `<button type="button" class="info-icon" aria-label="About ${col.label}" data-title="${col.info.title || col.label}" data-body="${col.info.desc || ''}" data-source-label="${col.info.source?.label || ''}" data-source-href="${col.info.source?.href || ''}">i</button>`
+                ? `<button type="button" class="info-icon" data-key="${col.id}" aria-label="About ${col.label}" data-title="${col.info.title || col.label}" data-body="${col.info.desc || ''}" data-source-label="${col.info.source?.label || ''}" data-source-href="${col.info.source?.href || ''}">i</button>`
                 : '';
               const sortLabel = (() => {
                 if (col.id === 'alloc_pct_gdp') return 'Sort by support for Ukraine.';
                 if (col.id === 'opinion') return 'Sort by public support';
                 if (col.id === 'mipex') return 'Sort by MIPEX score';
-                if (col.id === 'ua_pop_2021') return 'Sort by pre-war Ukrainian population';
+                if (col.id === 'ua_pop_2021') return 'Sort by pre-war population';
                 return `Sort by ${col.label}`;
               })();
               const sortBtn = col.id !== 'country'
                 ? `<button type="button" class="chart-sort-btn" data-key="${col.id}">${sortLabel}</button>`
                 : '';
               return `
-                <span class="chart-title-text">${col.label}</span>
+                <span class="chart-title-text"><span class="chart-title-label">${col.label}</span>${info}</span>
                 <span class="chart-title-actions">
                   ${sortBtn}
-                  ${info}
                 </span>`;
             });
 
@@ -1821,7 +1857,8 @@ const fmtPct = v => {
           showTip(false);
         });
         btn.addEventListener('mouseleave', () => {
-          if (metricTooltip.isActive(btn)) return;
+          if (metricTooltip.isActive(btn) && metricTooltip.isTooltipHovered()) return;
+          if (metricTooltip.isActive(btn)) metricTooltip.clearActive();
           hideTip();
         });
         btn.addEventListener('focus', () => {
@@ -1829,7 +1866,8 @@ const fmtPct = v => {
           showTip(false);
         });
         btn.addEventListener('blur', () => {
-          if (metricTooltip.isActive(btn)) return;
+          if (metricTooltip.isActive(btn) && metricTooltip.isTooltipHovered()) return;
+          if (metricTooltip.isActive(btn)) metricTooltip.clearActive();
           hideTip();
         });
         btn.addEventListener('click', e => {
