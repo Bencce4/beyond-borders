@@ -71,25 +71,10 @@ let compareSort = { key: 'total_refugees', dir: 'desc' };
 let refitForViewport = () => {};
 let uiScale = 1;
 
-const DEFAULT_BASE_VIEWPORT = { width: 1440, height: 900 };
-const BASE_VIEWPORT = (() => {
-  const fallback = { ...DEFAULT_BASE_VIEWPORT };
-  if (typeof window === 'undefined') return fallback;
-  try {
-    const stored = JSON.parse(localStorage.getItem('bb:baseViewport') || '{}');
-    if (Number.isFinite(stored.width) && Number.isFinite(stored.height)) {
-      return stored;
-    }
-  } catch (_) {}
-  const width = Math.max(320, window.innerWidth || fallback.width);
-  const height = Math.max(480, window.innerHeight || fallback.height);
-  const base = { width, height };
-  try { localStorage.setItem('bb:baseViewport', JSON.stringify(base)); } catch (_) {}
-  return base;
-})();
+const BASE_VIEWPORT = { width: 1710, height: 985 }; // fixed baseline viewport
 const computeUiScale = () => {
-  const baseW = BASE_VIEWPORT.width || DEFAULT_BASE_VIEWPORT.width;
-  const baseH = BASE_VIEWPORT.height || DEFAULT_BASE_VIEWPORT.height;
+  const baseW = BASE_VIEWPORT.width;
+  const baseH = BASE_VIEWPORT.height;
   const vw = Math.max(320, window.innerWidth || baseW);
   const vh = Math.max(480, window.innerHeight || baseH);
   const raw = Math.min(vw / baseW, vh / baseH);
@@ -301,6 +286,7 @@ const metricTooltip = (() => {
     show(html, rect);
   };
   const clearActive = () => {
+    if (activeBtn) activeBtn._metricPinned = false;
     activeBtn?.classList?.remove('active');
     activeBtn = null;
     hide(true);
@@ -1833,7 +1819,25 @@ const fmtPct = v => {
 
       const infoIcons = body.querySelectorAll('.info-icon');
       infoIcons.forEach(btn => {
-        const showTip = (sticky = false) => {
+        let hideTimer = null;
+        btn._metricPinned = btn._metricPinned || false;
+        const clearHideTimer = () => {
+          if (hideTimer) {
+            clearTimeout(hideTimer);
+            hideTimer = null;
+          }
+        };
+        const scheduleHide = () => {
+          clearHideTimer();
+          if (btn._metricPinned) return;
+          hideTimer = setTimeout(() => {
+            const hoveringIcon = btn.matches(':hover');
+            const hoveringTip = metricTooltip.isTooltipHovered();
+            if (hoveringIcon || hoveringTip) return;
+            if (metricTooltip.isActive(btn)) metricTooltip.clearActive();
+          }, 120);
+        };
+        const showTip = () => {
           const title = btn.dataset.title || '';
           const desc = btn.dataset.body || '';
           const srcLabel = btn.dataset.sourceLabel || '';
@@ -1847,36 +1851,36 @@ const fmtPct = v => {
             ${sourceHtml}
           `;
           const rect = btn.getBoundingClientRect();
-          if (sticky) metricTooltip.setActive(btn, html, rect);
-          else metricTooltip.show(html, rect);
+          metricTooltip.setActive(btn, html, rect);
+          btn._metricPinned = false;
         };
-        const hideTip = () => metricTooltip.hide();
         btn.addEventListener('mouseenter', e => {
           e.stopPropagation();
           if (metricTooltip.isActive(btn)) return;
-          showTip(false);
+          clearHideTimer();
+          showTip();
         });
         btn.addEventListener('mouseleave', () => {
-          if (metricTooltip.isActive(btn) && metricTooltip.isTooltipHovered()) return;
-          if (metricTooltip.isActive(btn)) metricTooltip.clearActive();
-          hideTip();
+          scheduleHide();
         });
         btn.addEventListener('focus', () => {
           if (metricTooltip.isActive(btn)) return;
-          showTip(false);
+          clearHideTimer();
+          showTip();
         });
         btn.addEventListener('blur', () => {
-          if (metricTooltip.isActive(btn) && metricTooltip.isTooltipHovered()) return;
-          if (metricTooltip.isActive(btn)) metricTooltip.clearActive();
-          hideTip();
+          scheduleHide();
         });
         btn.addEventListener('click', e => {
           e.stopPropagation();
           if (metricTooltip.isActive(btn)) {
+            btn._metricPinned = false;
             metricTooltip.clearActive();
           } else {
             metricTooltip.clearActive();
-            showTip(true);
+            clearHideTimer();
+            showTip();
+            btn._metricPinned = true;
           }
         });
       });
