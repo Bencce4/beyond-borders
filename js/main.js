@@ -1,162 +1,3 @@
-/* build v2: no basemap, crisp countries, labels, arrows+minis fixed */
-window.bb = {
-  ready: false,
-  flows: [],
-  factors: {},
-  _mapData: null,
-  map: null,
-  dump() {
-    return {
-      mapType: this._mapData?.type || null,
-      features: this._mapData?.features?.length || 0,
-      flows: this.flows.length,
-      factors: Object.keys(this.factors).length
-    };
-  }
-};
-
-// Demographic minis: always render all four categories
-const getActiveFactors = () => ['women', 'children', 'men', 'elderly'];
-
-const getBoxMode = () =>
-  (document.querySelector('input[name=boxmode]:checked')?.value === 'side'
-    ? 'side'
-    : 'stack');
-
-function loadScript(src) {
-  return new Promise((res, rej) => {
-    const s = document.createElement('script');
-    s.src = src;
-    s.async = true;
-    s.onload = res;
-    s.onerror = rej;
-    document.head.appendChild(s);
-  });
-}
-
-function safe(fn, tag) {
-  try { return fn(); }
-  catch (e) { console.error(tag || '[safe]', e); }
-}
-
-async function ensureLibs() {
-  if (!window.L) throw new Error('Leaflet missing');
-  if (!window.d3) {
-    await loadScript('https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js');
-  }
-  if (!window.d3) throw new Error('d3 failed');
-  if (!window.topojson) {
-    try {
-      await loadScript('https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js');
-    } catch (_) {}
-  }
-}
-
-const formatCount = v =>
-  !Number.isFinite(v) ? '—' : d3.format(',.0f')(Math.round(v));
-
-const comparePins = [];
-let selectedCountries = new Set();
-let countryNames = Object.create(null);
-let flows = [];
-let factors = {};
-let totals = {};
-let totalScale = null;
-let countryFeatures = new Map();
-let selectionLayer = null;
-let initialSelectionDone = false;
-let renderCompare = () => {};
-let flowEngine = null;
-let compareSort = { key: 'total_refugees', dir: 'desc' };
-let refitForViewport = () => {};
-let uiScale = 1;
-
-const BASE_VIEWPORT = { width: 1710, height: 985 }; // fixed baseline viewport
-const computeUiScale = () => {
-  const baseW = BASE_VIEWPORT.width;
-  const baseH = BASE_VIEWPORT.height;
-  const vw = Math.max(320, window.innerWidth || baseW);
-  const vh = Math.max(480, window.innerHeight || baseH);
-  const raw = Math.min(vw / baseW, vh / baseH);
-  return Math.max(0.75, Math.min(1.4, raw));
-};
-const applyUiScale = () => {
-  uiScale = computeUiScale();
-  document.documentElement.style.setProperty('--ui-scale', uiScale.toFixed(3));
-};
-
-function showDetail(html, opts = {}) {
-  const { skipRefit = false } = opts;
-  const panel = document.getElementById('detailPanel');
-  const body  = document.getElementById('detail-body');
-  if (!panel || !body) return;
-  if (html != null) body.innerHTML = html;
-  panel.style.display = 'block';
-  requestAnimationFrame(() => panel.classList.add('open'));
-  const arrowBtn = document.getElementById('detailToggleArrow');
-  if (arrowBtn) {
-    arrowBtn.textContent = '→';
-    arrowBtn.style.display = 'inline-flex';
-  }
-  const toggleBtn = document.getElementById('detailToggle');
-  if (toggleBtn) toggleBtn.style.display = 'none';
-  if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'true');
-  document.body.classList.add('panel-open');
-  if (!skipRefit) refitForViewport?.();
-}
-
-function hideDetail() {
-  const force = arguments.length ? !!arguments[0] : false;
-  const opts = arguments.length > 1 ? arguments[1] || {} : {};
-  const skipRefit = !!opts.skipRefit;
-  if (!force && selectedCountries.size >= 2) return;
-  const panel = document.getElementById('detailPanel');
-  if (panel) {
-    panel.classList.remove('open');
-    setTimeout(() => { panel.style.display = 'none'; }, 350);
-    const arrowBtn = document.getElementById('detailToggleArrow');
-    if (arrowBtn) {
-      arrowBtn.textContent = '←';
-      arrowBtn.style.display = 'inline-flex';
-    }
-    const toggleBtn = document.getElementById('detailToggle');
-    if (toggleBtn) {
-      toggleBtn.style.display = 'flex';
-      toggleBtn.setAttribute('aria-expanded', 'false');
-    }
-    document.body.classList.remove('panel-open');
-    updateCompareToggle();
-    if (!skipRefit) refitForViewport?.();
-  }
-}
-
-function updateCompareToggle() {
-  const wrap = document.querySelector('.detail-toggle-wrap');
-  if (wrap) wrap.style.display = 'none';
-}
-
-  function redrawSelectionOutline() {
-    selectionLayer.clearLayers();
-    if (!selectedCountries.size) return;
-    selectedCountries.forEach(id => {
-      const feat = countryFeatures.get(id);
-      if (!feat) return;
-      L.geoJSON(feat, {
-        pane: 'selection',
-        style: {
-          color: '#ffffff',
-          weight: 2,
-          opacity: 1,
-          fill: false,
-          lineJoin: 'round',
-          lineCap: 'round'
-        },
-        interactive: false
-      }).addTo(selectionLayer);
-    });
-    selectionLayer.eachLayer(l => l.bringToFront?.());
-  }
-
 (async function boot() {
   try { await ensureLibs(); }
   catch (e) {
@@ -166,8 +7,7 @@ function updateCompareToggle() {
   }
   applyUiScale();
 
-  // Map (no basemap)
-  // Allow extra room east so the map can be panned under the open compare panel
+  // Map 
   const EUROPE_BOUNDS = L.latLngBounds([32, -20], [72, 70]);
   const computePadding = () => {
     const panelOpen = document.body.classList.contains('panel-open');
@@ -217,7 +57,7 @@ function updateCompareToggle() {
   map.setView([52, 20], MIN_COMFORT_ZOOM, { animate: false });
   refitForViewport(false);
 
-  // Panes (z-order)
+  // objects
   map.createPane('countries'); map.getPane('countries').style.zIndex = 420;
   map.createPane('labels');    map.getPane('labels').style.zIndex   = 460; // labels above borders
   map.createPane('arrows');    map.getPane('arrows').style.zIndex   = 440;
@@ -226,16 +66,11 @@ function updateCompareToggle() {
   const arrowsGroup = L.layerGroup({ pane: 'arrows' }).addTo(map);
   const labelLayer  = L.layerGroup({ pane: 'labels' }).addTo(map);
   selectionLayer = L.layerGroup({ pane: 'selection' }).addTo(map);
-  let countryLayer  = null;
-  const countryLabels = new Map();
-
-  // Country picker state
-  let countryPickerBuilt = false;
-  let countryIds = [];
+  countryLayer  = null;
   countryNames = Object.create(null);
   countryFeatures = new Map();
 
-  // D3 overlay for minis — never steal clicks
+  // D3 overlay for minis and arrows
   const svgMini = L.svg({ pane: 'minis', padding: 0.5, interactive: true }).addTo(map);
   const miniRoot = d3
     .select(svgMini._rootGroup || svgMini._container.querySelector('svg'))
@@ -252,53 +87,8 @@ const miniTooltip = (() => {
   document.body.appendChild(el);
   return el;
 })();
-const metricTooltip = (() => {
-  const el = document.createElement('div');
-  el.className = 'info-tooltip';
-  el.style.position = 'fixed';
-  el.style.pointerEvents = 'none';
-  el.style.zIndex = '9999';
-  el.style.display = 'none';
-  document.body.appendChild(el);
-  let activeBtn = null;
-  let tooltipHover = false;
-  el.addEventListener('mouseenter', () => { tooltipHover = true; });
-  el.addEventListener('mouseleave', () => { tooltipHover = false; clearActive(); });
-  const show = (html, rect) => {
-    el.innerHTML = html;
-    el.style.display = 'block';
-    el.style.pointerEvents = 'auto';
-    const padding = 10;
-    const x = Math.min(window.innerWidth - 220, Math.max(padding, rect.left));
-    const y = Math.max(padding, rect.bottom + 6);
-    el.style.left = `${x}px`;
-    el.style.top = `${y}px`;
-  };
-  const hide = (force = false) => {
-    if (!force && activeBtn) return;
-    el.style.display = 'none';
-    el.style.pointerEvents = 'none';
-  };
-  const setActive = (btn, html, rect) => {
-    activeBtn?.classList?.remove('active');
-    activeBtn = btn;
-    activeBtn?.classList?.add('active');
-    show(html, rect);
-  };
-  const clearActive = () => {
-    if (activeBtn) activeBtn._metricPinned = false;
-    activeBtn?.classList?.remove('active');
-    activeBtn = null;
-    hide(true);
-  };
-  const isActive = btn => activeBtn === btn;
-  const hasActive = () => !!activeBtn;
-  const isTooltipHovered = () => tooltipHover;
-  return { el, show, hide, setActive, clearActive, isActive, hasActive, isTooltipHovered };
-})();
-let infoOutsideHooked = false;
 
-  // Helpers / aliases
+  // Helpers 
   const FLOW_KEYS = {
     dest_iso3: ['dest_iso3', 'iso3', 'ISO3', 'country_code', 'code'],
     lat:       ['lat', 'latitude'],
@@ -356,44 +146,6 @@ let infoOutsideHooked = false;
     return factors[id];
   }
 
-  const METRIC_INFO = {
-    gdp_pc: {
-      title: 'GDP per capita',
-      desc: 'Latest GDP per capita (USD) for each country.',
-      source: { label: 'eurostat/GDP_PC', href: 'https://ec.europa.eu/eurostat/databrowser/view/sdg_08_10/default/table?lang=en' }
-    },
-    unemployment: {
-      title: 'Unemployment rate',
-      desc: 'Most recent unemployment rate (share of labor force).',
-      source: { label: 'eurostat/unemployment', href: 'https://ec.europa.eu/eurostat/databrowser/view/tps00203/default/table' }
-    },
-    alloc_pct_gdp: {
-      title: 'Support for Ukraine (% GDP)',
-      desc: 'Share of GDP spent on Ukraine support (2021).',
-      source: { label: 'allocations per gdp', href: 'https://www.kielinstitut.de/publications/ukraine-support-tracker-data-6453/' }
-    },
-    mipex: {
-      title: 'MIPEX score (0–100)',
-      desc: 'Migrant Integration Policy Index score; higher means more inclusive policies.',
-      source: { label: 'mipex.eu', href: 'https://www.mipex.eu/play/' }
-    },
-    opinion: {
-      title: 'Public support for refugees',
-      desc: 'Survey share of people who support welcoming refugees.',
-      source: { label: 'eurostat/public opinion', href: 'https://europa.eu/eurobarometer/surveys/detail/3372' }
-    },
-    ua_pop_2021: {
-      title: 'Pre-war Ukrainian population (2021)',
-      desc: 'Registered Ukrainian citizens residing in the country before Russia’s full-scale invasion (2021).',
-      source: { label: 'residence permits (Eurostat)', href: 'data/migr_resvalid__custom_19375420_linear_2_0.csv' }
-    },
-    total_refugees: {
-      title: 'Total refugees',
-      desc: 'Aggregated count of refugees hosted by destination country.',
-      source: { label: 'eurostat.total_refugees', href: 'https://ec.europa.eu/eurostat/databrowser/view/migr_asytpsm__custom_19168926/default/table' }
-    }
-  };
-
   const iso = p =>
     String(
       p?.ISO_A3 ||
@@ -414,7 +166,6 @@ let infoOutsideHooked = false;
     '—';
 
   // Only draw these countries
-  // EU27 only (filter out non‑EU countries to avoid empty labels/data)
   const ALLOWED_ISO3 = new Set([
     'AUT','BEL','BGR','HRV','CYP','CZE','DEU','DNK','EST','ESP','FIN','FRA',
     'GRC','HUN','IRL','ITA','LTU','LUX','LVA','MLT','NLD','POL','PRT','ROU',
@@ -437,11 +188,7 @@ let infoOutsideHooked = false;
   factors = {};
   let mapData = null;
 
-  // Arrow destination lat/lon per ISO3
-  const destLL = Object.create(null);
 
-  // Minis / centroids location per ISO3
-  const centroidLL = Object.create(null);
 
 const isCountryVisible = id =>
   selectedCountries.size ? selectedCountries.has(id) : false;
@@ -459,7 +206,7 @@ const getCountryStyle = id => {
       opacity: 1,
       fill: true,
       fillOpacity: 0.55,
-      fillColor: '#9ca3af'
+      fillColor: '#8ea2c5ff'
     };
   }
   if (GRAY_NON_EU.has(id)) {
@@ -469,7 +216,7 @@ const getCountryStyle = id => {
       opacity: 1,
       fill: true,
       fillOpacity: 0.55,
-      fillColor: '#9ca3af'
+      fillColor: '#8ea2c5ff'
     };
   }
   if (id === 'UKR') {
@@ -489,7 +236,7 @@ const getCountryStyle = id => {
       opacity: 1,
       fill: true,
       fillOpacity: 0.6,
-      fillColor: '#374151'
+      fillColor: '#214a86ff'
     };
   }
   const fill = hasData && totalScale ? totalScale(totalVal) : '#9ca3af';
@@ -598,338 +345,6 @@ const getCountryStyle = id => {
       legend.style.pointerEvents = 'auto';
     });
   };
-  const seededRand = key => {
-    const s = (key == null ? '' : String(key));
-    let h = 2166136261 >>> 0;
-    for (let i = 0; i < s.length; i++) {
-      h ^= s.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    return () => {
-      h += 0x6d2b79f5;
-      let t = Math.imul(h ^ h >>> 15, 1 | h);
-      t ^= t + Math.imul(t ^ t >>> 7, 61 | t);
-      return ((t ^ t >>> 14) >>> 0) / 4294967296;
-    };
-  };
-
-  class FlowParticleEngine {
-    constructor(map, paneName = 'arrows') {
-      this.map = map;
-      this.pane = map.getContainer();
-      this.canvas = L.DomUtil.create('canvas', 'flow-canvas');
-      this.ctx = this.canvas.getContext('2d');
-      this.pane.appendChild(this.canvas);
-      this.flows = [];
-      this.particles = [];
-      this.last = performance.now();
-      this.running = false;
-      this.dirty = true;
-      this.maxParticles = 12000;
-      this.fade = 0.06; // fade a bit quicker so tails vanish faster
-      this.dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
-      this._tick = this.step.bind(this);
-      this.align = this.align.bind(this);
-      this.map.on('move zoom zoomend', () => { this.dirty = true; this.align(); });
-      this.map.on('resize', () => { this.dirty = true; this.resize(); });
-      this.map.on('zoomend', () => { this.dirty = true; });
-      this.resize();
-    }
-
-    resize() {
-      const size = this.map.getSize();
-      this.dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
-      const targetW = Math.round(size.x * this.dpr);
-      const targetH = Math.round(size.y * this.dpr);
-      if (this.canvas.width !== targetW || this.canvas.height !== targetH) {
-        this.canvas.width = targetW;
-        this.canvas.height = targetH;
-        this.canvas.style.width = `${size.x}px`;
-        this.canvas.style.height = `${size.y}px`;
-      }
-      this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-      this.ctx.clearRect(0, 0, targetW / this.dpr, targetH / this.dpr);
-      this.align();
-      this.dirty = true;
-    }
-
-    align() {
-      L.DomUtil.setPosition(this.canvas, L.point(0, 0));
-    }
-
-    pickCategory(distro) {
-      const r = Math.random();
-      let acc = 0;
-      for (const d of distro) {
-        acc += d.p;
-        if (r <= acc) return d;
-      }
-      return distro[distro.length - 1] || { color: '#ffffff' };
-    }
-
-    clear(resetParticles = false) {
-      const dpr = this.dpr || 1;
-      this.ctx.globalCompositeOperation = 'source-over';
-      this.ctx.globalAlpha = 1;
-      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      this.ctx.clearRect(0, 0, this.canvas.width / dpr, this.canvas.height / dpr);
-      if (resetParticles) this.particles = [];
-    }
-
-    setFlows(flows) {
-      const getId = f => f?.id || f?.dest_iso3 || f?.dest;
-      const prevIds = new Set(this.flows.map(getId).filter(Boolean));
-      const nextIds = new Set(flows.map(getId).filter(Boolean));
-      const removedIds = new Set([...prevIds].filter(id => !nextIds.has(id)));
-
-      if (removedIds.size) {
-        this.particles.forEach(p => {
-          const pid = getId(p.flow);
-          if (pid && removedIds.has(pid)) {
-            p.fading = true;
-            p.fadeAlpha = 1;
-          }
-        });
-      }
-
-      this.flows = flows.map(f => ({
-        ...f,
-        spawnAcc: 0
-      }));
-      this.dirty = true;
-      this.ensureRunning();
-    }
-
-    ensureRunning() {
-      if (this.running) return;
-      this.running = true;
-      this.last = performance.now();
-      requestAnimationFrame(this._tick);
-    }
-
-    reproject() {
-      this.flows.forEach(f => {
-        const pts = f.latlngs.map(ll => this.map.latLngToContainerPoint(ll));
-        let len = 0;
-        const acc = [0];
-        for (let i = 1; i < pts.length; i++) {
-          len += pts[i].distanceTo(pts[i - 1]);
-          acc.push(len);
-        }
-        f.points = pts;
-        f.acc = acc;
-        f.len = len || 1;
-      });
-      this.dirty = false;
-    }
-
-    pointAt(f, u) {
-      if (!f.points || f.points.length < 2) return null;
-      const dist = u * f.len;
-      const acc = f.acc;
-      let idx = acc.findIndex(x => x >= dist);
-      if (idx < 1) idx = 1;
-      if (idx === -1) idx = acc.length - 1;
-      const p0 = f.points[idx - 1];
-      const p1 = f.points[idx];
-      const span = acc[idx] - acc[idx - 1] || 1;
-      const t = Math.min(1, Math.max(0, (dist - acc[idx - 1]) / span));
-      return L.point(
-        p0.x + (p1.x - p0.x) * t,
-        p0.y + (p1.y - p0.y) * t
-      );
-    }
-
-    spawn(dt) {
-      for (const f of this.flows) {
-        const intensity = Math.max(0.4, Math.min(1.0, f.intensity || 0.6));
-        const rate = Math.max(0.05, f.spawnRate || 0); // dots per second, derived from people-per-particle
-        f.spawnAcc += rate * dt;
-        const spawnN = Math.min(6, Math.floor(f.spawnAcc));
-        f.spawnAcc -= spawnN;
-
-        const laneCount = 1; // single lane; straight path
-        const laneSpacing = 0;
-
-        for (let i = 0; i < spawnN; i++) {
-          if (this.particles.length >= this.maxParticles) break;
-          const laneIdx = Math.floor(Math.random() * laneCount);
-          const laneOffset = (laneIdx - (laneCount - 1) / 2) * laneSpacing;
-          const jitter = 0; // no wiggle
-          const spreadWidth = (f.spread || 1) * 2.2; // continuous band
-          const randOffset = 0; // no random offset; stays centered on lane
-          const cat = this.pickCategory(f.distro);
-          this.particles.push({
-            flow: f,
-            u: 0,
-            speed: 1 / f.duration,
-            jitter,
-            laneOffset,
-            randOffset,
-            color: cat.color,
-            fading: false,
-            fadeAlpha: 1
-          });
-        }
-      }
-    }
-
-    update(dt) {
-      const alive = [];
-      for (const p of this.particles) {
-        const speedMult = p.fading ? 2.2 : 1;
-        p.u += dt * p.speed * speedMult;
-        if (p.fading) {
-          p.fadeAlpha = (p.fadeAlpha ?? 1) - dt * 3.2;
-          if ((p.fadeAlpha ?? 0) <= 0) continue;
-        }
-        if (p.u <= 1 || p.fading) alive.push(p);
-      }
-      this.particles = alive;
-    }
-
-    drawFrame() {
-      const ctx = this.ctx;
-      const dpr = this.dpr || 1;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      // Clear frame to avoid lingering streaks
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 1;
-      ctx.clearRect(0, 0, this.canvas.width / dpr, this.canvas.height / dpr);
-
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-
-      const r = 1.0;
-      const tailDelay = 0.06;
-      const tailLen = 22;
-
-      for (const p of this.particles) {
-        const f = p.flow;
-        const fadeFactor = Math.max(0, Math.min(1, p.fadeAlpha ?? 1));
-        const mainPt = this.pointAt(f, p.u);
-        if (!mainPt) continue;
-
-        const dir = this._dirForPoint(f, p.u, mainPt);
-        const jitter = p.jitter;
-        const perp = this._perpForFlow(f, mainPt);
-        const offsetFactor = Math.sin(Math.PI * Math.max(0, Math.min(1, p.u))); // zero at ends, peak mid
-
-        const drawCircle = (pt, radius, alpha) => {
-          if (!pt) return;
-          const spread = f.spread || 1;
-          const baseOffset = (p.laneOffset || 0) + (p.randOffset || 0);
-        const offset = (baseOffset + jitter) * offsetFactor;
-          const x = pt.x + perp[0] * offset;
-          const y = pt.y + perp[1] * offset;
-          ctx.beginPath();
-          ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fillStyle = p.color || f.color || '#ffffff';
-          ctx.globalAlpha = alpha * fadeFactor;
-          ctx.fill();
-        };
-
-        const drawSquare = (pt, size, alpha) => {
-          if (!pt) return;
-          const spread = f.spread || 1;
-          const baseOffset = (p.laneOffset || 0) + (p.randOffset || 0);
-          const offset = (baseOffset + jitter) * offsetFactor;
-          const x = pt.x + perp[0] * offset;
-          const y = pt.y + perp[1] * offset;
-          const half = size / 2;
-          ctx.beginPath();
-          ctx.rect(x - half, y - half, size, size);
-          ctx.fillStyle = p.color || f.color || '#ffffff';
-          ctx.globalAlpha = alpha * fadeFactor;
-          ctx.fill();
-        };
-
-        // tail with smooth fade
-        const headColor = p.color || f.color || '#ffffff';
-        if (p.u > tailDelay) {
-          const tailEnd = L.point(mainPt.x - dir.x * tailLen, mainPt.y - dir.y * tailLen);
-          const grad = ctx.createLinearGradient(tailEnd.x, tailEnd.y, mainPt.x, mainPt.y);
-          grad.addColorStop(0, 'rgba(255,255,255,0)');
-          grad.addColorStop(1, headColor);
-          ctx.beginPath();
-          ctx.moveTo(tailEnd.x, tailEnd.y);
-          ctx.lineTo(mainPt.x, mainPt.y);
-          ctx.strokeStyle = grad;
-          ctx.globalAlpha = fadeFactor;
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-        // main dot as a square
-        drawSquare(mainPt, r * 1.4, 0.95);
-      }
-
-      ctx.globalAlpha = 1;
-      ctx.restore();
-    }
-
-    _perpForFlow(f, pt) {
-      if (!f.points || f.points.length < 2) return [0, 0];
-      // find nearest segment
-      let bestIdx = 1;
-      let bestDist = Infinity;
-      for (let i = 1; i < f.points.length; i++) {
-        const p0 = f.points[i - 1];
-        const p1 = f.points[i];
-        const dx = p1.x - p0.x;
-        const dy = p1.y - p0.y;
-        const proj = ((pt.x - p0.x) * dx + (pt.y - p0.y) * dy) / (dx*dx + dy*dy || 1);
-        const clamped = Math.max(0, Math.min(1, proj));
-        const cx = p0.x + dx * clamped;
-        const cy = p0.y + dy * clamped;
-        const d2 = (pt.x - cx) ** 2 + (pt.y - cy) ** 2;
-        if (d2 < bestDist) {
-          bestDist = d2;
-          bestIdx = i;
-        }
-      }
-      const p0 = f.points[bestIdx - 1];
-      const p1 = f.points[bestIdx];
-      const vx = p1.x - p0.x;
-      const vy = p1.y - p0.y;
-      const len = Math.hypot(vx, vy) || 1;
-      return [-vy / len, vx / len];
-    }
-
-    _dirForPoint(f, u, pt) {
-      if (!f.points || f.points.length < 2) return { x: 0, y: -1 };
-      const dist = u * (f.len || 1);
-      const acc = f.acc || [];
-      let idx = acc.findIndex(x => x >= dist);
-      if (idx < 1) idx = 1;
-      if (idx === -1) idx = acc.length - 1;
-      const p0 = f.points[idx - 1];
-      const p1 = f.points[idx];
-      let vx = p1.x - p0.x;
-      let vy = p1.y - p0.y;
-      if (vx === 0 && vy === 0 && f.points.length >= 2) {
-        const first = f.points[0];
-        const last = f.points[f.points.length - 1];
-        vx = last.x - first.x;
-        vy = last.y - first.y;
-      }
-      const len = Math.hypot(vx, vy) || 1;
-      return { x: vx / len, y: vy / len };
-    }
-
-    step(now) {
-      if (!this.running) return;
-      const dt = Math.min(0.08, (now - this.last) / 1000);
-      this.last = now;
-      this.resize();
-      if (this.dirty) this.reproject();
-      this.spawn(dt);
-      this.update(dt);
-      this.drawFrame();
-      requestAnimationFrame(this._tick);
-    }
-  }
-
-  // Minis config
   // Minis config
 const VARS = ['women', 'children', 'men', 'elderly']; // demographic minis
 
@@ -945,15 +360,6 @@ const STROKES = {
   children: '#166534',
   men: '#1d4ed8',
   elderly: '#92400e'
-};
-
-const METRIC_COLORS = {
-  gdp_pc: '#60a5fa',
-  unemployment: '#fb923c',
-  alloc_pct_gdp: '#eab308',
-  mipex: '#8b5cf6',
-  opinion: '#14b8a6',
-  ua_pop_2021: '#a3e635'
 };
 
 function ensureUkraineGradient(renderer) {
@@ -1012,10 +418,6 @@ const XFORM = {
 
 const INVERTED_VARS = new Set(); // none for demographics
 
-const resetCompareSort = () => {
-  compareSort = { key: 'total_refugees', dir: 'desc' };
-};
-
 function syncCompareFromSelection(openPanel = false, resetSort = true) {
   comparePins.length = 0;
   selectedCountries.forEach(id => comparePins.push(id));
@@ -1027,20 +429,11 @@ function syncCompareFromSelection(openPanel = false, resetSort = true) {
     miniScale = {};
     for (const v of VARS) {
       miniScale[v] = d3.scaleLinear()
-        .domain([0, 1]) // percentages 0–100%
+        .domain([0, 1]) 
         .range([BOX_MIN, BOX_MAX])
         .clamp(true);
     }
   }
-
-  const fmtNum = v =>
-    (v == null || isNaN(v)) ? '—' : d3.format(',')(Math.round(+v));
-
-const fmtPct = v => {
-  if (v == null || isNaN(v)) return '—';
-  const x = +v > 1 ? +v / 100 : +v;
-  return d3.format('.1%')(Math.max(0, Math.min(1, x)));
-};
 
   function updateCountrySummary() {
     const summary = document.getElementById('countryPickerSummary');
@@ -1189,7 +582,6 @@ const fmtPct = v => {
       }
     }
 
-    // Country factors (GDP, aid, unemployment, permit metrics)
     factors = {};
     for (const r of factorRows) {
       const id = String(
@@ -1382,13 +774,13 @@ const fmtPct = v => {
             ? destLL[id]
             : [polyCenter.lat, polyCenter.lng];
           if (id === 'SWE') {
-            base = [base[0], base[1] - 3.0]; // nudge Sweden minis left a bit more
+            base = [base[0], base[1] - 3.0]; // move sweden minis left
           }
           if (id === 'PRT') {
-            base = [base[0] - 0.8, base[1]]; // nudge Portugal minis down slightly
+            base = [base[0] - 0.8, base[1]]; // move Portugal minis down 
           }
           if (id === 'ESP') {
-            base = [base[0] + 0.4, base[1] + 0.6]; // nudge Spain minis up/right slightly
+            base = [base[0] + 0.4, base[1] + 0.6]; // move Spain minis up and right
           }
 
           // Minis live at base
@@ -1485,432 +877,6 @@ const fmtPct = v => {
 
     const getArrowLabel = () =>
       document.getElementById('arrowColorVar')?.selectedOptions?.[0]?.text || 'Arrow metric';
-
-    const metricColorFor = (key, val) => {
-      if (key === 'arrow') return arrowColor(val || 0);
-      return METRIC_COLORS[key] || '#94a3b8';
-    };
-
-    renderCompare = function renderCompare(openPanel = false, opts = {}) {
-      const { resetSort = false } = opts;
-      const panel = document.getElementById('detailPanel');
-      const body = document.getElementById('detail-body');
-      if (!panel || !body) return;
-      const preserveScroll = panel.classList.contains('open');
-      const prevScroll = preserveScroll ? panel.scrollTop : 0;
-      // keep comparePins in sync with selectedCountries
-      comparePins.length = 0;
-      selectedCountries.forEach(id => comparePins.push(id));
-      if (resetSort) resetCompareSort();
-      if (!comparePins.length) {
-        body.innerHTML = 'Click countries to add them to the comparison table.';
-        hideDetail();
-        return;
-      }
-
-      const rows = comparePins.map(id => {
-        const name = countryNames[id] || id;
-        const f = factors[id] || {};
-        const ref = flows.find(x => x.dest_iso3 === id) || {};
-        return { id, name, f, ref };
-      });
-
-      const getSortValue = (row, key) => {
-        switch (key) {
-          case 'country':       return row.name || row.id;
-          case 'gdp_pc':        return row.f.gdp_pc;
-          case 'unemployment':  return row.f.unemployment;
-          case 'alloc_pct_gdp': return row.f.alloc_pct_gdp;
-          case 'mipex':         return row.f.mipex;
-          case 'opinion':       return row.f.opinion;
-          case 'ua_pop_2021':   return row.f.ua_pop_2021;
-          case 'total_refugees':return row.ref.total_refugees;
-          default:              return row.name || row.id;
-        }
-      };
-
-      const allowedSortKeys = new Set(['country', 'gdp_pc', 'unemployment', 'alloc_pct_gdp', 'mipex', 'opinion', 'ua_pop_2021', 'total_refugees']);
-      if (!allowedSortKeys.has(compareSort.key)) {
-        compareSort = { key: 'total_refugees', dir: 'desc' };
-      }
-
-      const sortDir = compareSort.dir === 'asc' ? 1 : -1;
-      const sortedRows = rows.slice().sort((a, b) => {
-        if (compareSort.key === 'country') {
-          return (a.name || a.id).localeCompare(b.name || b.id) * sortDir;
-        }
-        const va = getSortValue(a, compareSort.key);
-        const vb = getSortValue(b, compareSort.key);
-        const na = Number.isFinite(+va) ? +va : -Infinity;
-        const nb = Number.isFinite(+vb) ? +vb : -Infinity;
-        if (na === nb) return (a.name || '').localeCompare(b.name || '') * sortDir;
-        return na < nb ? -1 * sortDir : 1 * sortDir;
-      });
-
-      const columns = [
-        {
-          id: 'country',
-          label: 'Country',
-          align: 'left',
-          render: row =>
-            `<div class="compare-country">
-              <div class="name">${row.name}</div>
-              <div class="code">${row.id}</div>
-            </div>`
-        },
-        {
-          id: 'gdp_pc',
-          label: 'GDP per capita',
-          align: 'right',
-          render: row => fmtNum(row.f.gdp_pc),
-          color: metricColorFor('gdp_pc'),
-          info: METRIC_INFO.gdp_pc
-        },
-        {
-          id: 'unemployment',
-          label: 'Unemployment rate',
-          align: 'right',
-          render: row => fmtPct(row.f.unemployment),
-          color: metricColorFor('unemployment'),
-          info: METRIC_INFO.unemployment
-        },
-        {
-          id: 'alloc_pct_gdp',
-          label: 'Support for Ukraine % GDP',
-          align: 'right',
-          render: row => fmtPct(row.f.alloc_pct_gdp),
-          color: metricColorFor('alloc_pct_gdp'),
-          info: METRIC_INFO.alloc_pct_gdp
-        },
-        {
-          id: 'mipex',
-          label: 'MIPEX score (0–100)',
-          align: 'right',
-          render: row => fmtNum(row.f.mipex),
-          color: metricColorFor('mipex'),
-          info: METRIC_INFO.mipex
-        },
-        {
-          id: 'opinion',
-          label: 'Public support for refugees',
-          align: 'right',
-          render: row => fmtPct(row.f.opinion),
-          color: metricColorFor('opinion'),
-          info: METRIC_INFO.opinion
-        },
-        {
-          id: 'ua_pop_2021',
-          label: 'Pre-war Ukrainian population (2021)',
-          align: 'right',
-          render: row => fmtNum(row.f.ua_pop_2021),
-          color: metricColorFor('ua_pop_2021'),
-          info: METRIC_INFO.ua_pop_2021
-        },
-        {
-          id: 'total_refugees',
-          label: 'Total refugees',
-          align: 'right',
-          render: row => formatCount(row.ref.total_refugees),
-          color: '#cbd5e1',
-          info: METRIC_INFO.total_refugees
-        }
-      ];
-
-      const headerCells = columns.map(col => {
-        const style = [];
-        if (col.align) style.push(`text-align:${col.align}`);
-        if (col.color) style.push(`color:${col.color}`);
-        const isSortable = col.id !== 'country';
-        const isActive = isSortable && compareSort.key === col.id;
-        const indicator = isSortable
-          ? `<span class="sort-indicator ${isActive ? 'active' : 'inactive'}">${isActive ? (compareSort.dir === 'asc' ? '▲' : '▼') : '⇅'}</span>`
-          : '';
-        const sortableClass = isSortable ? 'sortable' : '';
-        const activeClass = isActive ? 'active-sort' : '';
-        const ariaSort = isSortable
-          ? (isActive ? (compareSort.dir === 'asc' ? 'ascending' : 'descending') : 'none')
-          : 'none';
-        const title = isSortable ? 'Click to sort' : '';
-        const dataKeyAttr = isSortable ? `data-key="${col.id}"` : '';
-        return `<th ${dataKeyAttr} class="${sortableClass} ${activeClass}" style="${style.join(';')}" aria-sort="${ariaSort}" title="${title}">${col.label}${indicator}</th>`;
-      }).join('');
-
-      const bodyRows = sortedRows.map(row => {
-        const cells = columns.map(col => {
-          if (col.id === 'country') {
-            return `
-              <td class="country-cell">
-                <div class="compare-country">
-                  <div class="name">${row.name}</div>
-                </div>
-                <button class="compare-remove" data-id="${row.id}" aria-label="Remove ${row.name}">×</button>
-              </td>
-            `;
-          }
-          const val = typeof col.render === 'function' ? col.render(row) : '';
-          const style = [];
-          const color = typeof col.getColor === 'function' ? col.getColor(row) : col.color;
-          if (col.align) style.push(`text-align:${col.align}`);
-          if (color) style.push(`color:${color}`);
-          return `<td style="${style.join(';')}">${val}</td>`;
-        }).join('');
-        return `<tr>${cells}</tr>`;
-      }).join('');
-
-      body.innerHTML = `
-        <div class="compare-charts"></div>
-        <div class="compare-table-wrapper">
-          <div class="compare-hint">Click any metric header to sort</div>
-          <table class="compare-table">
-            <thead><tr>${headerCells}</tr></thead>
-            <tbody>${bodyRows}</tbody>
-          </table>
-        </div>
-      `;
-      const shouldOpen = openPanel || panel.classList.contains('open');
-      if (shouldOpen) {
-        panel.classList.add('open');
-        panel.style.display = 'block';
-        panel.focus?.();
-      } else {
-        panel.classList.remove('open');
-        panel.style.display = 'none';
-      }
-      if (preserveScroll) {
-        requestAnimationFrame(() => {
-          panel.scrollTop = prevScroll;
-        });
-      }
-
-      function renderCharts() {
-        const rootEl = body.querySelector('.compare-charts');
-        if (!rootEl || typeof d3 === 'undefined') return;
-        const root = d3.select(rootEl);
-        root.selectAll('*').remove();
-
-        const metricCols = columns.filter(c => c.id !== 'country');
-        metricCols.sort((a, b) => (a.id === 'total_refugees' ? -1 : b.id === 'total_refugees' ? 1 : 0));
-        const formatVal = (col, row) => {
-          switch (col.id) {
-            case 'gdp_pc': return fmtNum(row.f.gdp_pc);
-            case 'unemployment': return fmtPct(row.f.unemployment);
-            case 'alloc_pct_gdp': return fmtPct(row.f.alloc_pct_gdp);
-            case 'mipex': return fmtNum(row.f.mipex);
-            case 'opinion': return fmtPct(row.f.opinion);
-            case 'ua_pop_2021': return fmtNum(row.f.ua_pop_2021);
-            case 'total_refugees': return formatCount(row.ref.total_refugees);
-            default: return '';
-          }
-        };
-
-        metricCols.forEach(col => {
-          const values = sortedRows.map(row => ({
-            row,
-            name: row.name || row.id,
-            id: row.id,
-            val: getSortValue(row, col.id)
-          })).filter(d => Number.isFinite(+d.val));
-
-          if (!values.length) return;
-
-          const card = root.append('div').attr('class', 'chart-card');
-          const title = card.append('div')
-            .attr('class', 'chart-title chart-title-row')
-            .html(() => {
-              const info = col.info
-                ? `<button type="button" class="info-icon" data-key="${col.id}" aria-label="About ${col.label}" data-title="${col.info.title || col.label}" data-body="${col.info.desc || ''}" data-source-label="${col.info.source?.label || ''}" data-source-href="${col.info.source?.href || ''}">i</button>`
-                : '';
-              const sortLabel = (() => {
-                if (col.id === 'alloc_pct_gdp') return 'Sort by support for Ukraine.';
-                if (col.id === 'opinion') return 'Sort by public support';
-                if (col.id === 'mipex') return 'Sort by MIPEX score';
-                if (col.id === 'ua_pop_2021') return 'Sort by pre-war population';
-                return `Sort by ${col.label}`;
-              })();
-              const sortBtn = col.id !== 'country'
-                ? `<button type="button" class="chart-sort-btn" data-key="${col.id}">${sortLabel}</button>`
-                : '';
-              return `
-                <span class="chart-title-text"><span class="chart-title-label">${col.label}</span>${info}</span>
-                <span class="chart-title-actions">
-                  ${sortBtn}
-                </span>`;
-            });
-
-    const viewport = Math.max(320, window.innerWidth || 1200);
-    const scale = Math.min(1.25, Math.max(0.88, viewport / 1400)) * uiScale;
-          const barH = 12 * scale;
-          const gap = 6 * scale;
-          const marginBase = { t: 12, r: 36, b: 12, l: 60 };
-          const margin = {
-            t: marginBase.t * scale,
-            r: marginBase.r * scale,
-            b: marginBase.b * scale,
-            l: Math.max(42 * scale, marginBase.l * scale * 0.9) // keep labels close to the bubble
-          };
-          const containerW = Math.max(320, Math.min((card.node()?.clientWidth || 400), 540));
-          const usable = containerW * 0.86;
-          const width = usable;
-          const height = values.length * (barH + gap) + margin.t + margin.b - gap;
-
-          const maxVal = d3.max(values, d => +d.val) || 1;
-          const x = d3.scaleLinear()
-            .domain([0, maxVal])
-            .range([0, width - margin.l - margin.r]);
-
-          const svg = card.append('svg')
-            .attr('class', 'bar-chart')
-            .attr('width', '100%')
-            .attr('height', height)
-            .attr('viewBox', `0 0 ${width} ${height}`);
-
-          const g = svg.append('g').attr('transform', `translate(${margin.l},${margin.t})`);
-
-          const colorFor = row =>
-            (typeof col.getColor === 'function' ? col.getColor(row) : col.color) || '#38bdf8';
-
-          g.selectAll('rect')
-            .data(values)
-            .enter()
-            .append('rect')
-            .attr('x', 0)
-            .attr('y', (_, i) => i * (barH + gap))
-            .attr('width', d => x(Math.max(0, +d.val)))
-            .attr('height', barH)
-            .attr('rx', 4)
-            .attr('ry', 4)
-            .attr('fill', d => colorFor(d.row));
-
-          g.selectAll('text.name')
-            .data(values)
-            .enter()
-            .append('text')
-            .attr('class', 'bar-label')
-            .attr('x', -6)
-            .attr('y', (_, i) => i * (barH + gap) + barH * 0.7)
-            .attr('text-anchor', 'end')
-            .text(d => `${d.name}`);
-
-          g.selectAll('text.val')
-            .data(values)
-            .enter()
-            .append('text')
-            .attr('class', 'bar-value')
-            .attr('x', d => x(Math.max(0, +d.val)) + 4)
-            .attr('y', (_, i) => i * (barH + gap) + barH * 0.7)
-            .text(d => formatVal(col, d.row));
-        });
-      }
-
-      renderCharts();
-
-      body.querySelectorAll('.compare-table th.sortable').forEach(th => {
-        th.addEventListener('click', () => {
-          const key = th.dataset.key;
-          if (!key || key === 'country') return;
-          if (compareSort.key === key) {
-            compareSort.dir = compareSort.dir === 'asc' ? 'desc' : 'asc';
-          } else {
-            compareSort = { key, dir: 'desc' };
-          }
-          renderCompare(panel.classList.contains('open'), { resetSort: false });
-        });
-      });
-
-      const infoIcons = body.querySelectorAll('.info-icon');
-      infoIcons.forEach(btn => {
-        let hideTimer = null;
-        btn._metricPinned = btn._metricPinned || false;
-        const clearHideTimer = () => {
-          if (hideTimer) {
-            clearTimeout(hideTimer);
-            hideTimer = null;
-          }
-        };
-        const scheduleHide = () => {
-          clearHideTimer();
-          if (btn._metricPinned) return;
-          hideTimer = setTimeout(() => {
-            const hoveringIcon = btn.matches(':hover');
-            const hoveringTip = metricTooltip.isTooltipHovered();
-            if (hoveringIcon || hoveringTip) return;
-            if (metricTooltip.isActive(btn)) metricTooltip.clearActive();
-          }, 120);
-        };
-        const showTip = () => {
-          const title = btn.dataset.title || '';
-          const desc = btn.dataset.body || '';
-          const srcLabel = btn.dataset.sourceLabel || '';
-          const srcHref = btn.dataset.sourceHref || '';
-          const sourceHtml = srcHref
-            ? `<div class="info-source">Source: <a href="${srcHref}" target="_blank" rel="noopener">${srcLabel || srcHref}</a></div>`
-            : '';
-          const html = `
-            <div class="info-title">${title}</div>
-            <div class="info-desc">${desc}</div>
-            ${sourceHtml}
-          `;
-          const rect = btn.getBoundingClientRect();
-          metricTooltip.setActive(btn, html, rect);
-          btn._metricPinned = false;
-        };
-        btn.addEventListener('mouseenter', e => {
-          e.stopPropagation();
-          if (metricTooltip.isActive(btn)) return;
-          clearHideTimer();
-          showTip();
-        });
-        btn.addEventListener('mouseleave', () => {
-          scheduleHide();
-        });
-        btn.addEventListener('focus', () => {
-          if (metricTooltip.isActive(btn)) return;
-          clearHideTimer();
-          showTip();
-        });
-        btn.addEventListener('blur', () => {
-          scheduleHide();
-        });
-        btn.addEventListener('click', e => {
-          e.stopPropagation();
-          if (metricTooltip.isActive(btn)) {
-            btn._metricPinned = false;
-            metricTooltip.clearActive();
-          } else {
-            metricTooltip.clearActive();
-            clearHideTimer();
-            showTip();
-            btn._metricPinned = true;
-          }
-        });
-      });
-
-      const chartSortBtns = body.querySelectorAll('.chart-sort-btn');
-      chartSortBtns.forEach(btn => {
-        btn.addEventListener('click', e => {
-          e.stopPropagation();
-          const key = btn.dataset.key;
-          if (!key || key === 'country') return;
-          if (compareSort.key === key) {
-            compareSort.dir = compareSort.dir === 'asc' ? 'desc' : 'asc';
-          } else {
-            compareSort = { key, dir: 'desc' };
-          }
-          renderCompare(panel.classList.contains('open'), { resetSort: false });
-        });
-      });
-
-      if (!infoOutsideHooked) {
-        document.addEventListener('click', e => {
-          if (!metricTooltip.hasActive()) return;
-          const target = e.target;
-          const insideTooltip = metricTooltip.el?.contains(target);
-          const isIcon = target?.closest?.('.info-icon');
-          if (!insideTooltip && !isIcon) metricTooltip.clearActive();
-        });
-        infoOutsideHooked = true;
-      }
-    }
 
     function bez(a, c, b, n = 40) {
       const pts = [];
@@ -2013,8 +979,7 @@ const fmtPct = v => {
 
       flowEngine.setFlows(flowData);
 
-      // Lightweight tooltip hit areas showing total refugees
-      // no flow hover tooltips
+
     }
 
     // Minis
@@ -2033,7 +998,6 @@ const fmtPct = v => {
     const zoomScale = map?.getZoomScale ? map.getZoomScale(zoom, baseZoom) : Math.pow(2, zoom - baseZoom);
     const zoomFactor = Math.max(1.0, Math.min(3.5, zoomScale * uiScale)); // minis grow as you zoom in, tied to UI scale
 
-    // Only keep variables we actually know how to transform + have scales for
     const activeVars = active.filter(v =>
       typeof XFORM[v] === 'function' && miniScale[v]
     );
@@ -2058,7 +1022,7 @@ const fmtPct = v => {
           const scale = miniScale[v] || (x => BOX_MIN);
           let s = Math.max(BOX_MIN, Math.min(BOX_MAX, scale(x)));
           if (INVERTED_VARS.has(v)) {
-            s = BOX_MIN + (BOX_MAX - s); // invert scale so higher value -> smaller box
+            s = BOX_MIN + (BOX_MAX - s); // invert scale 
           }
           const scaledMin = BOX_MIN * zoomFactor;
           const scaledMax = BOX_MAX * zoomFactor;
@@ -2069,7 +1033,7 @@ const fmtPct = v => {
         return { id, ll, sizes };
       }).filter(Boolean);
 
-      // Hide labels for countries with minis to reduce overlap
+      // Hide labels for countries with minis 
       countryLabels.forEach((marker, iso3) => {
         const el = marker.getElement && marker.getElement();
         if (!el) return;
@@ -2400,14 +1364,6 @@ const fmtPct = v => {
       });
     });
 
-    const closeBtn = document.getElementById('detailClose');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', e => {
-        e.preventDefault();
-        e.stopPropagation();
-        hideDetail();
-      });
-    }
     const toggleBtn = document.getElementById('detailToggle');
     const toggleArrow = document.getElementById('detailToggleArrow');
     const toggleWrap = document.querySelector('.detail-toggle-wrap');

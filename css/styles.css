@@ -98,18 +98,30 @@ main#map{position:relative;overflow:hidden}
   box-shadow:none;
   backdrop-filter:none;
   display:none;
+  display:flex;
+  flex-direction:column;
   z-index:1000;
   overflow:auto;
-  transform:translateX(100%) translateY(6px) scale(0.98);
+  -webkit-overflow-scrolling: touch;
+  transform:translateX(120%);
   opacity:0;
   pointer-events:none;
-  transition:transform .85s cubic-bezier(0.22, 1, 0.36, 1), opacity .8s ease;
+  transition:transform 1s cubic-bezier(0.22, 1, 0.36, 1), opacity 1s cubic-bezier(0.22, 1, 0.36, 1);
   will-change:transform, opacity;
 }
 .detail-panel.open{
-  transform:translateX(0) translateY(0) scale(1);
+  transform:translateX(0);
   opacity:1;
   pointer-events:auto;
+}
+.detail-panel #detail-body{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  flex:1;
+  overflow:auto;
+  overflow-y:auto;
+  min-height:0;
 }
 .detail-close{
   position:absolute;top:calc(clamp(6px, 1vw, 10px) * var(--ui-scale));right:calc(clamp(6px, 1vw, 10px) * var(--ui-scale));
@@ -159,12 +171,17 @@ main#map{position:relative;overflow:hidden}
 .compare-rows{display:grid;gap:3px;font-size:13px;color:var(--ink)}
 .compare-rows .label{color:var(--muted)}
 .compare-row{display:flex;justify-content:space-between;align-items:center;gap:6px}
-.compare-table-wrapper{overflow-x:auto;margin-top:4px}
+.compare-table-wrapper{
+  overflow:auto;
+  margin-top:4px;
+  flex:1;
+  min-height:0;
+}
 .compare-table{width:100%;border-collapse:collapse;font-size:13px;color:var(--ink)}
 .compare-table th,
 .compare-table td{padding:8px 6px;border-bottom:1px solid var(--border)}
 .compare-table th{
-  position:sticky;top:0;z-index:1;
+  position:static;
   background:var(--panel);
   text-align:left;
   font-weight:700;
